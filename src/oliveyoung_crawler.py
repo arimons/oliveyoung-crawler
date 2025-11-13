@@ -40,6 +40,8 @@ class OliveyoungIntegratedCrawler:
     def stop(self):
         """크롤러 종료"""
         self.base_crawler.stop()
+        self.detail_crawler = None
+        self.review_crawler = None
 
     def create_product_folder(self, product_name: str) -> str:
         """

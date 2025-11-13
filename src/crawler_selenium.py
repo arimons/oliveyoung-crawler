@@ -66,6 +66,7 @@ class OliveyoungCrawler:
         if self.driver:
             self.driver.quit()
             print("🛑 브라우저 종료")
+        self.driver = None
 
     def navigate_to_home(self):
         """올리브영 홈페이지로 이동"""

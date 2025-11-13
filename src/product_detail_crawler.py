@@ -225,6 +225,9 @@ class ProductDetailCrawler:
                             print(f"  {idx+1}. [중복 제외] {img_url[:80]}...")
                             continue
 
+                        # APGLOBAL 에셋 예외 처리
+                        is_apglobal_asset = "amc.apglobal.com" in img_url
+
                         # 너무 작은 이미지는 제외 (로딩 스피너, 아이콘, 구분선 등)
                         width = img.get_attribute("width")
                         height = img.get_attribute("height")
@@ -284,12 +287,15 @@ class ProductDetailCrawler:
 
                         should_include = width_ok and height_ok and aspect_ok
 
-                        if should_include:
+                        if should_include or is_apglobal_asset:
                             image_urls.append(img_url)
                             seen_urls.add(img_url)
-                            print(f"  {idx+1}. {img_url[:80]}... ({reason})")
+                            if is_apglobal_asset and not should_include:
+                                print(f"  {idx+1}. [APGLOBAL 포함] {img_url[:80]}... (필터링 규칙 무시)")
+                            else:
+                                print(f"  {idx+1}. {img_url[:80]}... ({reason})")
                         else:
-                            print(f"  {idx+1}. [필터링 제외] {filter_reason}")
+                            print(f"  {idx+1}. [필터링 제외] {filter_reason} - {img_url[:80]}...")
 
                 except Exception as e:
                     print(f"  ⚠️  {idx+1}번 이미지 추출 실패: {e}")
@@ -353,10 +359,11 @@ class ProductDetailCrawler:
     def _split_images_by_context(self, images: List[Image.Image], similarity_threshold: float = 0.85) -> List[List[Image.Image]]:
         """
         이미지를 문맥(색상 유사도)에 따라 그룹으로 분할
+        (수정됨: 이제 높이 제한이 있을 때만 분할을 고려)
 
         Args:
             images: 이미지 리스트
-            similarity_threshold: 유사도 임계값 (이 값 이상이면 같은 그룹)
+            similarity_threshold: 유사도 임계값 (현재는 로깅용)
 
         Returns:
             이미지 그룹 리스트
@@ -376,23 +383,27 @@ class ProductDetailCrawler:
             prev_img = images[i - 1]
             curr_img = images[i]
 
-            # 색상 유사도 계산
-            similarity = self._calculate_color_similarity(prev_img, curr_img)
-
             # 높이 체크
             would_exceed = (current_height + curr_img.height) > MAX_HEIGHT
 
-            # 분할 결정
-            if similarity >= similarity_threshold and not would_exceed:
-                # 같은 문맥 → 현재 그룹에 추가
+            # 분할 결정: 높이 초과 여부만으로 판단
+            if not would_exceed:
+                # 높이가 충분하면 현재 그룹에 추가
                 current_group.append(curr_img)
                 current_height += curr_img.height
+                
+                # 유사도는 참고용으로만 계산 및 로깅
+                similarity = self._calculate_color_similarity(prev_img, curr_img)
                 print(f"  [{i}/{len(images)-1}] 유사도: {similarity:.2f} → 같은 그룹 (누적 높이: {current_height}px)")
             else:
-                # 다른 문맥 또는 높이 초과 → 새 그룹 시작
+                # 높이 초과 시 새 그룹 시작
                 groups.append(current_group)
-                reason = "높이 초과" if would_exceed else f"유사도 낮음 ({similarity:.2f})"
-                print(f"  [{i}/{len(images)-1}] {reason} → 새 그룹 시작")
+                reason = "높이 초과"
+                
+                # 유사도 계산 (로깅용)
+                similarity = self._calculate_color_similarity(prev_img, curr_img)
+                print(f"  [{i}/{len(images)-1}] {reason} (유사도: {similarity:.2f}) → 새 그룹 시작")
+                
                 current_group = [curr_img]
                 current_height = curr_img.height
 

@@ -179,9 +179,10 @@ with tab1:
         if not keyword:
             st.error("❌ 검색어를 입력해주세요!")
         else:
-            # 크롤러가 없으면 자동으로 시작
-            if st.session_state.crawler is None:
-                with st.spinner("브라우저 시작 중..."):
+            # 크롤러가 없거나 드라이버가 종료된 경우 자동으로 시작
+            if st.session_state.crawler is None or st.session_state.crawler.base_crawler.driver is None:
+                with st.spinner("브라우저 재시작 중..."):
+                    stop_crawler()  # 기존에 문제가 있는 크롤러가 있다면 완전히 종료
                     if init_crawler():
                         st.success("✅ 브라우저 시작 완료!")
                         time.sleep(0.5)  # UI 업데이트 대기
@@ -293,32 +294,6 @@ with tab1:
                     # 성공 메시지
                     st.success("🎉 크롤링 완료!")
 
-                    # 결과 표시
-                    col1, col2, col3 = st.columns([2, 1, 1])
-
-                    with col1:
-                        st.subheader("📋 상품 정보")
-                        st.text(f"상품명: {result['상품명']}")
-                        st.text(f"이미지 개수: {result['이미지_개수']}개")
-
-                    with col2:
-                        st.subheader("📂 저장 위치")
-                        st.code(result['폴더'], language="text")
-
-                    with col3:
-                        st.subheader("🔧 작업")
-                        if st.button("📁 폴더 열기", key="open_result_folder"):
-                            open_folder(result['폴더'])
-
-                    # 이미지 미리보기
-                    if result['이미지'] and os.path.exists(result['이미지']):
-                        st.subheader("🖼️ 병합된 이미지 미리보기")
-                        try:
-                            img = Image.open(result['이미지'])
-                            st.image(img, use_column_width=True)
-                        except Exception as e:
-                            st.error(f"이미지 표시 중 오류: {e}")
-
                     # 진행 표시 제거
                     progress_bar.empty()
                     status_text.empty()
@@ -356,9 +331,10 @@ with tab2:
         elif not product_url.startswith("https://www.oliveyoung.co.kr"):
             st.error("❌ 올바른 올리브영 URL이 아닙니다!")
         else:
-            # 크롤러가 없으면 자동으로 시작
-            if st.session_state.crawler is None:
-                with st.spinner("브라우저 시작 중..."):
+            # 크롤러가 없거나 드라이버가 종료된 경우 자동으로 시작
+            if st.session_state.crawler is None or st.session_state.crawler.base_crawler.driver is None:
+                with st.spinner("브라우저 재시작 중..."):
+                    stop_crawler() # 기존에 문제가 있는 크롤러가 있다면 완전히 종료
                     if init_crawler():
                         st.success("✅ 브라우저 시작 완료!")
                         time.sleep(0.5)  # UI 업데이트 대기
@@ -457,32 +433,6 @@ with tab2:
                 # 성공 메시지
                 st.success("🎉 크롤링 완료!")
 
-                # 결과 표시
-                col1, col2, col3 = st.columns([2, 1, 1])
-
-                with col1:
-                    st.subheader("📋 상품 정보")
-                    st.text(f"상품명: {result['상품명']}")
-                    st.text(f"이미지 개수: {result['이미지_개수']}개")
-
-                with col2:
-                    st.subheader("📂 저장 위치")
-                    st.code(result['폴더'], language="text")
-
-                with col3:
-                    st.subheader("🔧 작업")
-                    if st.button("📁 폴더 열기", key="open_result_folder_url"):
-                        open_folder(result['폴더'])
-
-                # 이미지 미리보기
-                if result['이미지'] and os.path.exists(result['이미지']):
-                    st.subheader("🖼️ 병합된 이미지 미리보기")
-                    try:
-                        img = Image.open(result['이미지'])
-                        st.image(img, use_column_width=True)
-                    except Exception as e:
-                        st.error(f"이미지 표시 중 오류: {e}")
-
                 # 진행 표시 제거
                 progress_bar.empty()
                 status_text.empty()
@@ -494,6 +444,39 @@ with tab2:
                     st.code(traceback.format_exc())
                 progress_bar.empty()
                 status_text.empty()
+
+
+# --- 최신 결과 표시 ---
+if st.session_state.results:
+    st.markdown("---")
+    st.header("📄 최신 크롤링 결과")
+
+    latest_result = st.session_state.results[-1]
+
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        st.subheader("📋 상품 정보")
+        st.text(f"상품명: {latest_result['상품명']}")
+        st.text(f"이미지 개수: {latest_result['이미지_개수']}개")
+
+    with col2:
+        st.subheader("📂 저장 위치")
+        st.code(latest_result['폴더'], language="text")
+
+    with col3:
+        st.subheader("🔧 작업")
+        if st.button("📁 폴더 열기", key="open_latest_result_folder"):
+            open_folder(latest_result['폴더'])
+
+    # 이미지 미리보기
+    if latest_result['이미지'] and os.path.exists(latest_result['이미지']):
+        st.subheader("🖼️ 병합된 이미지 미리보기")
+        try:
+            img = Image.open(latest_result['이미지'])
+            st.image(img, use_column_width=True)
+        except Exception as e:
+            st.error(f"이미지 표시 중 오류: {e}")
 
 
 # 푸터
