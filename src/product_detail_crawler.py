@@ -11,6 +11,7 @@ import time
 import os
 from typing import List, Dict
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class ProductDetailCrawler:
@@ -32,7 +33,152 @@ class ProductDetailCrawler:
         """
         print(f"🔗 상품 페이지로 이동: {product_url}")
         self.driver.get(product_url)
-        time.sleep(2)
+
+        # React 앱 렌더링 대기 - 상품명이 로드될 때까지
+        try:
+            wait = WebDriverWait(self.driver, 10)
+            # h1 태그가 로드되고 텍스트가 있을 때까지 대기
+            wait.until(lambda driver: driver.execute_script(
+                "return document.querySelector('h1') && document.querySelector('h1').textContent.length > 0"
+            ))
+            print("✅ 페이지 로딩 완료")
+        except:
+            print("⚠️  페이지 로딩 대기 타임아웃, 계속 진행")
+            time.sleep(2)
+
+    def extract_review_metadata(self) -> Dict[str, any]:
+        """
+        리뷰 개수와 별점 추출 (상품 설명 근처에서 직접 추출)
+
+        Returns:
+            {"리뷰_총개수": int, "별점": float} 형태의 딕셔너리
+        """
+        metadata = {"리뷰_총개수": 0, "별점": 0.0}
+
+        try:
+            # 디버깅: 페이지 HTML 일부 저장
+            try:
+                page_html = self.driver.page_source
+                with open("debug_review_metadata_page.html", "w", encoding="utf-8") as f:
+                    f.write(page_html)
+                print(f"📁 디버깅용 페이지 HTML 저장: debug_review_metadata_page.html")
+            except:
+                pass
+
+            # JavaScript로 React 렌더링된 DOM에서 직접 추출
+            result = self.driver.execute_script("""
+                const debug = {};
+
+                // 별점 추출 - <span class="rating"> 구조에서 추출
+                let rating = 0.0;
+
+                // 패턴 1: <span class="rating"> 요소에서 직접 추출
+                const ratingSpan = document.querySelector('span.rating');
+                if (ratingSpan) {
+                    // "평점4.8" 또는 "평점 4.8" 형태에서 숫자만 추출
+                    const text = ratingSpan.textContent.trim();
+                    const match = text.match(/([0-9]+\\.[0-9]+)/);
+                    if (match) {
+                        rating = parseFloat(match[1]);
+                        debug.ratingSource = 'span.rating querySelector';
+                        debug.ratingText = text;
+                        debug.ratingHTML = ratingSpan.outerHTML.substring(0, 150);
+                    }
+                }
+
+                // 패턴 2: ReviewArea_rating 클래스 검색
+                if (rating === 0.0) {
+                    const reviewAreaRating = document.querySelector('[class*="ReviewArea_rating"]');
+                    if (reviewAreaRating) {
+                        const text = reviewAreaRating.textContent.trim();
+                        const match = text.match(/([0-9]+\\.[0-9]+)/);
+                        if (match) {
+                            rating = parseFloat(match[1]);
+                            debug.ratingSource = 'ReviewArea_rating class';
+                            debug.ratingText = text;
+                        }
+                    }
+                }
+
+                // 리뷰수 추출 - ReviewArea_review-count 또는 "리뷰" 텍스트
+                let totalCount = 0;
+
+                // 패턴 1: ReviewArea_review-count 클래스에서 추출
+                const reviewCountElem = document.querySelector('[class*="ReviewArea_review-count"]');
+                if (reviewCountElem) {
+                    const text = reviewCountElem.textContent;
+                    const match = text.match(/([0-9,]+)/);
+                    if (match) {
+                        totalCount = parseInt(match[1].replace(/,/g, ''));
+                        debug.reviewSource = 'ReviewArea_review-count class';
+                        debug.reviewHTML = reviewCountElem.outerHTML.substring(0, 150);
+                        debug.reviewText = text.substring(0, 50);
+                    }
+                }
+
+                // 패턴 2: "리뷰" 텍스트가 포함된 요소에서 숫자 찾기 (fallback)
+                if (totalCount === 0) {
+                    const allElements = Array.from(document.querySelectorAll('*'));
+                    const reviewElem = allElements.find(el => {
+                        const text = el.textContent;
+                        return text.includes('리뷰') && /[0-9,]+/.test(text) && text.length < 50;
+                    });
+
+                    if (reviewElem) {
+                        const match = reviewElem.textContent.match(/([0-9,]+)/);
+                        if (match) {
+                            totalCount = parseInt(match[1].replace(/,/g, ''));
+                            debug.reviewSource = 'element with 리뷰 text (fallback)';
+                            debug.reviewHTML = reviewElem.outerHTML.substring(0, 150);
+                            debug.reviewText = reviewElem.textContent.substring(0, 50);
+                        }
+                    }
+                }
+
+                return {
+                    total: totalCount,
+                    rating: rating,
+                    debug: debug
+                };
+            """)
+
+            if result:
+                # 디버깅 정보 출력
+                debug_info = result.get("debug", {})
+                print(f"\n🔍 추출 정보:")
+                print(f"  별점 출처: {debug_info.get('ratingSource', 'N/A')}")
+                if debug_info.get('ratingText'):
+                    print(f"  별점 텍스트: {debug_info.get('ratingText')}")
+                if debug_info.get('ratingHTML'):
+                    print(f"  별점 HTML: {debug_info.get('ratingHTML')}")
+
+                print(f"\n  리뷰수 출처: {debug_info.get('reviewSource', 'N/A')}")
+                if debug_info.get('reviewText'):
+                    print(f"  리뷰수 텍스트: {debug_info.get('reviewText')}")
+                if debug_info.get('reviewHTML'):
+                    print(f"  리뷰수 HTML: {debug_info.get('reviewHTML')}")
+
+                metadata["리뷰_총개수"] = result.get("total", 0)
+                metadata["별점"] = result.get("rating", 0.0)
+
+                if metadata["리뷰_총개수"] > 0:
+                    print(f"📊 리뷰 총 개수: {metadata['리뷰_총개수']}개")
+                else:
+                    print(f"⚠️  리뷰 개수를 찾을 수 없음")
+
+                if metadata["별점"] > 0:
+                    print(f"⭐ 별점: {metadata['별점']}점")
+                else:
+                    print(f"⚠️  별점을 찾을 수 없음")
+            else:
+                print(f"⚠️  JavaScript 실행 결과가 없음")
+
+        except Exception as e:
+            print(f"⚠️  리뷰 메타데이터 추출 실패: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return metadata
 
     def click_more_button(self):
         """상품설명 더보기 버튼 클릭"""
@@ -166,10 +312,11 @@ class ProductDetailCrawler:
         print("📸 상품 설명 이미지 URL 추출 중...")
         image_urls = []
 
-        try:
-            # 상품 설명 영역 찾기
-            wait = WebDriverWait(self.driver, 10)
+        # 성능 개선: implicit wait를 임시로 0으로 설정 (빠른 검색)
+        original_implicit_wait = self.driver.timeouts.implicit_wait
+        self.driver.implicitly_wait(0)
 
+        try:
             # 여러 가능한 선택자 시도 (올리브영 페이지 구조 기반)
             selectors = [
                 # 상품 설명 영역의 이미지들 (실제 HTML 구조 기반)
@@ -184,20 +331,49 @@ class ProductDetailCrawler:
                 ".prd_detail img",                      # 상품 상세
                 "div[class*='detail'] img",             # detail 클래스 포함하는 div 안의 이미지
                 "div[id*='detail'] img",                # detail ID 포함하는 div 안의 이미지
+                "img[src*='amc.apglobal.com']",        # AMC CDN 이미지
+                "img[src*='asset']",                    # asset 경로 이미지
             ]
 
-            images = []
+            # 모든 selector를 시도하고 총 이미지 면적이 가장 큰 것 선택
+            best_images = []
+            best_selector = None
+            best_total_area = 0
+
             for selector in selectors:
                 try:
-                    images = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if images:
-                        print(f"✅ '{selector}'로 {len(images)}개 이미지 발견")
-                        break
-                    else:
-                        print(f"  ⚠️  '{selector}' - 이미지 없음")
+                    found_images = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if not found_images:
+                        print(f"  '{selector}': 이미지 없음")
+                        continue
+
+                    # 총 면적 계산 (width * height 합계) - JavaScript로 한 번에 계산
+                    total_area = self.driver.execute_script("""
+                        const images = arguments[0];
+                        return images.reduce((sum, img) => {
+                            const w = img.naturalWidth || img.width || 0;
+                            const h = img.naturalHeight || img.height || 0;
+                            return sum + (w * h);
+                        }, 0);
+                    """, found_images)
+
+                    print(f"  '{selector}': {len(found_images)}개 이미지, 총 면적 {total_area:,}px²")
+
+                    # 총 면적이 가장 큰 selector 선택
+                    if total_area > best_total_area:
+                        best_images = found_images
+                        best_selector = selector
+                        best_total_area = total_area
+
                 except Exception as e:
-                    print(f"  ⚠️  '{selector}' - 오류: {e}")
+                    print(f"  '{selector}': 오류 - {e}")
                     continue
+
+            images = best_images
+            if images:
+                print(f"✅ 최종 선택: '{best_selector}'로 {len(images)}개 이미지 사용 (총 면적: {best_total_area:,}px²)")
+            else:
+                print("⚠️ 모든 selector에서 이미지를 찾지 못함")
 
             if not images:
                 print("❌ 상품 설명 이미지를 찾을 수 없습니다")
@@ -315,6 +491,10 @@ class ProductDetailCrawler:
 
         except Exception as e:
             print(f"❌ 이미지 추출 중 오류: {e}")
+
+        finally:
+            # implicit wait 원래대로 복구
+            self.driver.implicitly_wait(original_implicit_wait)
 
         return image_urls
 
@@ -545,37 +725,60 @@ class ProductDetailCrawler:
             return ""
 
         print(f"\n📥 이미지 다운로드 및 병합 시작 (총 {len(image_urls)}개)...")
+        print(f"⚡ 병렬 다운로드 시작 (최대 10개 동시)")
 
-        images = []
-        max_width = 0
-
-        # 이미지 다운로드
-        for idx, url in enumerate(image_urls):
+        # 단일 이미지 다운로드 함수
+        def download_single_image(url, idx):
+            """단일 이미지 다운로드"""
             try:
-                if progress_callback:
-                    progress_callback(f"💾 이미지 다운로드 중... [{idx+1}/{len(image_urls)}]", idx+1, len(image_urls))
-
-                print(f"  [{idx+1}/{len(image_urls)}] 다운로드 중...")
-
-                # 이미지 다운로드
                 response = requests.get(url, timeout=10)
                 response.raise_for_status()
 
-                # PIL Image로 변환
                 img = Image.open(BytesIO(response.content))
 
-                # RGB로 변환 (RGBA나 다른 모드 대응)
+                # RGB로 변환
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
 
-                images.append(img)
-                max_width = max(max_width, img.width)
-
-                print(f"    ✅ 크기: {img.width}x{img.height}")
-
+                return idx, img, None
             except Exception as e:
-                print(f"    ⚠️  다운로드 실패: {e}")
-                continue
+                return idx, None, str(e)
+
+        # 병렬 다운로드 (순서 유지를 위해 idx 기반 딕셔너리 사용)
+        images_dict = {}
+        max_width = 0
+        completed_count = 0
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            # 모든 다운로드 작업 제출
+            future_to_idx = {
+                executor.submit(download_single_image, url, idx): idx
+                for idx, url in enumerate(image_urls)
+            }
+
+            # 완료되는 대로 처리
+            for future in as_completed(future_to_idx):
+                idx, img, error = future.result()
+                completed_count += 1
+
+                if progress_callback:
+                    progress_callback(
+                        f"💾 이미지 다운로드 중... [{completed_count}/{len(image_urls)}]",
+                        completed_count,
+                        len(image_urls)
+                    )
+
+                if error:
+                    print(f"  [{idx+1}/{len(image_urls)}] ⚠️  다운로드 실패: {error}")
+                else:
+                    images_dict[idx] = img
+                    max_width = max(max_width, img.width)
+                    print(f"  [{idx+1}/{len(image_urls)}] ✅ 크기: {img.width}x{img.height}")
+
+        # 순서대로 정렬하여 리스트로 변환
+        images = [images_dict[i] for i in sorted(images_dict.keys())]
+
+        print(f"✅ 다운로드 완료: {len(images)}/{len(image_urls)}개 성공")
 
         if not images:
             print("❌ 다운로드된 이미지가 없습니다")

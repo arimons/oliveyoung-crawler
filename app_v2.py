@@ -99,22 +99,60 @@ with st.sidebar:
         help="상품 정보를 저장할 파일 형식"
     )
 
-    # 리뷰 수집 옵션
-    collect_reviews = st.checkbox(
-        "리뷰도 수집",
-        value=False,
-        help="체크하면 상품 리뷰도 함께 수집합니다 (시간이 더 걸릴 수 있음)"
+    st.markdown("#### 📦 수집 항목 선택")
+    st.caption("상품 기본 정보는 항상 수집됩니다")
+
+    # 이미지 수집 옵션
+    collect_images = st.checkbox(
+        "상세페이지 이미지 수집",
+        value=True,
+        help="상품 상세 페이지의 이미지를 수집하여 병합합니다"
     )
 
-    # 이미지 분할 모드
-    st.markdown("#### 🖼️ 이미지 분할 모드")
-    split_mode = st.radio(
-        "분할 방식",
-        options=["context", "tile"],
-        index=0,
-        format_func=lambda x: "🎨 문맥 기반" if x == "context" else "🖥️ 타일 레이아웃 (16:9 비율)",
-        help="문맥 기반: 색상 유사도로 자동 분할 | 타일 레이아웃: 16:9 비율 기준 2열 배치"
+    # 리뷰 수집 옵션
+    collect_reviews = st.checkbox(
+        "리뷰 텍스트 수집",
+        value=False,
+        help="상품 리뷰 텍스트를 수집합니다 (시간이 더 걸릴 수 있음)"
     )
+
+    # 리뷰 수집 날짜 범위 (리뷰 수집이 체크된 경우만 표시)
+    review_end_date = None
+    if collect_reviews:
+        from datetime import datetime, timedelta
+
+        use_date_filter = st.checkbox(
+            "날짜 범위 설정",
+            value=False,
+            help="특정 날짜까지의 리뷰만 수집합니다"
+        )
+
+        if use_date_filter:
+            # 기본값: 1개월 전
+            default_date = datetime.now() - timedelta(days=30)
+
+            review_end_date_input = st.date_input(
+                "수집 종료 날짜",
+                value=default_date,
+                help="이 날짜 이후의 리뷰만 수집합니다 (이 날짜 포함하지 않음)"
+            )
+
+            # YYYY.MM.DD 형식으로 변환
+            review_end_date = review_end_date_input.strftime("%Y.%m.%d")
+            st.caption(f"📅 {review_end_date} 이후 리뷰 수집")
+
+    # 이미지 분할 모드 (이미지 수집이 체크된 경우만 표시)
+    if collect_images:
+        st.markdown("#### 🖼️ 이미지 분할 모드")
+        split_mode = st.radio(
+            "분할 방식",
+            options=["context", "tile"],
+            index=0,
+            format_func=lambda x: "🎨 문맥 기반" if x == "context" else "🖥️ 타일 레이아웃 (16:9 비율)",
+            help="문맥 기반: 색상 유사도로 자동 분할 | 타일 레이아웃: 16:9 비율 기준 2열 배치"
+        )
+    else:
+        split_mode = "context"  # 기본값
 
     st.markdown("---")
 
@@ -154,7 +192,11 @@ with st.sidebar:
     if st.session_state.results:
         for idx, result in enumerate(reversed(st.session_state.results[-5:])):
             with st.expander(f"{len(st.session_state.results)-idx}. {result['상품명'][:20]}..."):
-                st.text(f"이미지: {result['이미지_개수']}개")
+                st.text(f"⭐ 별점: {result.get('별점', 'N/A')}점")
+                st.text(f"📊 총 리뷰: {result.get('리뷰_총개수', 0)}개")
+                st.text(f"📸 이미지: {result['이미지_개수']}개")
+                if result.get('수집된_리뷰_개수', 0) > 0:
+                    st.text(f"📝 수집된 리뷰: {result['수집된_리뷰_개수']}개")
                 if st.button(f"📁 폴더 열기", key=f"open_{idx}"):
                     open_folder(result['폴더'])
     else:
@@ -224,58 +266,69 @@ with tab1:
                     # 4. 상세 페이지 이동
                     status_text.text("🔗 상품 페이지로 이동 중...")
                     st.session_state.crawler.detail_crawler.go_to_product_detail(product_url)
+                    progress_bar.progress(0.5)
+
+                    # 5. 리뷰 메타데이터 추출 (항상 실행)
+                    status_text.text("📊 리뷰 정보 추출 중...")
+                    review_metadata = st.session_state.crawler.detail_crawler.extract_review_metadata()
+                    product_info = {
+                        "상품명": product_name,
+                        "리뷰_총개수": review_metadata.get("리뷰_총개수", 0),
+                        "별점": review_metadata.get("별점", 0.0),
+                        "이미지_개수": 0
+                    }
                     progress_bar.progress(0.6)
 
-                    # 5. 더보기 버튼 클릭
-                    status_text.text("🔘 '더보기' 버튼 클릭 중...")
-                    st.session_state.crawler.detail_crawler.click_more_button()
-                    progress_bar.progress(0.7)
+                    # 6. 이미지 수집 (옵션)
+                    if collect_images:
+                        # 더보기 버튼 클릭
+                        status_text.text("🔘 '더보기' 버튼 클릭 중...")
+                        st.session_state.crawler.detail_crawler.click_more_button()
+                        progress_bar.progress(0.65)
 
-                    # 6. 이미지 URL 추출
-                    status_text.text("📸 이미지 URL 추출 중...")
-                    image_urls = st.session_state.crawler.detail_crawler.extract_product_images()
+                        # 이미지 URL 추출
+                        status_text.text("📸 이미지 URL 추출 중...")
+                        image_urls = st.session_state.crawler.detail_crawler.extract_product_images()
+                        progress_bar.progress(0.7)
+
+                        # 이미지 다운로드 및 병합
+                        if not image_urls:
+                            st.warning("⚠️  추출된 이미지가 없습니다")
+                        else:
+                            try:
+                                def update_download_progress(message, current, total):
+                                    """다운로드 진행 상황 업데이트"""
+                                    status_text.text(message)
+                                    # 0.7 ~ 0.8 범위에서 진행률 표시
+                                    progress = 0.7 + (current / total) * 0.1
+                                    progress_bar.progress(progress)
+
+                                output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
+                                saved_path = st.session_state.crawler.detail_crawler.download_and_merge_images(
+                                    image_urls, output_image_path, progress_callback=update_download_progress,
+                                    split_mode=split_mode
+                                )
+
+                                product_info["이미지_경로"] = saved_path
+                                product_info["이미지_개수"] = len(image_urls)
+                            except Exception as e:
+                                st.error(f"⚠️  이미지 병합 중 오류 발생: {e}")
+
                     progress_bar.progress(0.8)
 
-                    if not image_urls:
-                        st.warning("⚠️  추출된 이미지가 없습니다")
-                        product_info = {"상품명": product_name, "이미지_개수": 0}
-                    else:
-                        # 7. 이미지 다운로드 및 병합
-                        def update_download_progress(message, current, total):
-                            """다운로드 진행 상황 업데이트"""
-                            status_text.text(message)
-                            # 0.7 ~ 0.9 범위에서 진행률 표시
-                            progress = 0.7 + (current / total) * 0.2
-                            progress_bar.progress(progress)
-
-                        output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
-                        saved_path = st.session_state.crawler.detail_crawler.download_and_merge_images(
-                            image_urls, output_image_path, progress_callback=update_download_progress,
-                            split_mode=split_mode
-                        )
-
-                        product_info = {
-                            "상품명": product_name,
-                            "이미지_경로": saved_path,
-                            "이미지_개수": len(image_urls)
-                        }
-
-                    progress_bar.progress(0.85)
-
-                    # 8. 리뷰 수집 (옵션)
+                    # 7. 리뷰 텍스트 수집 (옵션)
                     if collect_reviews:
-                        status_text.text("📝 리뷰 수집 중...")
-                        reviews = st.session_state.crawler.review_crawler.crawl_all_reviews()
-                        if reviews:
-                            review_file = os.path.join(save_folder, "reviews.txt")
-                            st.session_state.crawler.review_crawler.save_reviews_to_file(reviews, review_file)
-                            product_info["리뷰_개수"] = len(reviews)
-                        else:
-                            product_info["리뷰_개수"] = 0
+                        status_text.text("📝 리뷰 텍스트 수집 중...")
+                        review_file = os.path.join(save_folder, "reviews.txt")
+                        review_count = st.session_state.crawler.review_crawler.crawl_all_reviews(
+                            output_path=review_file,
+                            end_date=review_end_date
+                        )
+                        product_info["수집된_리뷰_개수"] = review_count
 
                     progress_bar.progress(0.9)
 
-                    # 9. 데이터 저장
+                    # 8. 데이터 저장
                     status_text.text("💾 데이터 저장 중...")
                     st.session_state.crawler.save_product_info(product_info, save_folder, save_format)
 
@@ -287,12 +340,27 @@ with tab1:
                         "상품명": product_name,
                         "폴더": save_folder,
                         "이미지": product_info.get("이미지_경로", ""),
-                        "이미지_개수": product_info.get("이미지_개수", 0)
+                        "이미지_개수": product_info.get("이미지_개수", 0),
+                        "별점": product_info.get("별점", 0.0),
+                        "리뷰_총개수": product_info.get("리뷰_총개수", 0),
+                        "수집된_리뷰_개수": product_info.get("수집된_리뷰_개수", 0)
                     }
                     st.session_state.results.append(result)
 
                     # 성공 메시지
                     st.success("🎉 크롤링 완료!")
+
+                    # 수집 결과 요약
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("⭐ 별점", f"{product_info.get('별점', 0.0)}점")
+                    with col2:
+                        st.metric("📊 총 리뷰", f"{product_info.get('리뷰_총개수', 0)}개")
+                    with col3:
+                        st.metric("📸 이미지", f"{product_info.get('이미지_개수', 0)}개")
+
+                    if product_info.get('수집된_리뷰_개수', 0) > 0:
+                        st.info(f"📝 {product_info['수집된_리뷰_개수']}개의 리뷰를 수집했습니다")
 
                     # 진행 표시 제거
                     progress_bar.empty()
@@ -353,68 +421,79 @@ with tab2:
                 # 2. 상품명 추출 (입력 안 됐으면)
                 if not product_name_input:
                     status_text.text("📝 상품명 추출 중...")
-                    product_info = st.session_state.crawler.detail_crawler.extract_product_info_from_detail()
-                    product_name = product_info.get("상품명", "Unknown_Product").split('\n')[0][:50]
+                    detail_info = st.session_state.crawler.detail_crawler.extract_product_info_from_detail()
+                    product_name = detail_info.get("상품명", "Unknown_Product").split('\n')[0][:50]
                 else:
                     product_name = product_name_input
 
                 progress_bar.progress(0.3)
 
-                # 3. 폴더 생성
-                status_text.text("📁 폴더 생성 중...")
-                save_folder = st.session_state.crawler.create_product_folder(product_name)
+                # 3. 리뷰 메타데이터 추출 (항상 실행)
+                status_text.text("📊 리뷰 정보 추출 중...")
+                review_metadata = st.session_state.crawler.detail_crawler.extract_review_metadata()
+                product_info = {
+                    "상품명": product_name,
+                    "리뷰_총개수": review_metadata.get("리뷰_총개수", 0),
+                    "별점": review_metadata.get("별점", 0.0),
+                    "이미지_개수": 0
+                }
                 progress_bar.progress(0.4)
 
-                # 4. 더보기 버튼 클릭
-                status_text.text("🔘 '더보기' 버튼 클릭 중...")
-                st.session_state.crawler.detail_crawler.click_more_button()
+                # 4. 폴더 생성
+                status_text.text("📁 폴더 생성 중...")
+                save_folder = st.session_state.crawler.create_product_folder(product_name)
                 progress_bar.progress(0.5)
 
-                # 5. 이미지 URL 추출
-                status_text.text("📸 이미지 URL 추출 중...")
-                image_urls = st.session_state.crawler.detail_crawler.extract_product_images()
-                progress_bar.progress(0.6)
+                # 5. 이미지 수집 (옵션)
+                if collect_images:
+                    # 더보기 버튼 클릭
+                    status_text.text("🔘 '더보기' 버튼 클릭 중...")
+                    st.session_state.crawler.detail_crawler.click_more_button()
+                    progress_bar.progress(0.55)
 
-                if not image_urls:
-                    st.warning("⚠️  추출된 이미지가 없습니다")
-                    product_info = {"상품명": product_name, "이미지_개수": 0}
-                else:
-                    # 6. 이미지 다운로드 및 병합
-                    def update_download_progress_url(message, current, total):
-                        """다운로드 진행 상황 업데이트"""
-                        status_text.text(message)
-                        # 0.6 ~ 0.8 범위에서 진행률 표시
-                        progress = 0.6 + (current / total) * 0.2
-                        progress_bar.progress(progress)
+                    # 이미지 URL 추출
+                    status_text.text("📸 이미지 URL 추출 중...")
+                    image_urls = st.session_state.crawler.detail_crawler.extract_product_images()
+                    progress_bar.progress(0.6)
 
-                    output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
-                    saved_path = st.session_state.crawler.detail_crawler.download_and_merge_images(
-                        image_urls, output_image_path, progress_callback=update_download_progress_url,
-                        split_mode=split_mode
-                    )
+                    # 이미지 다운로드 및 병합
+                    if not image_urls:
+                        st.warning("⚠️  추출된 이미지가 없습니다")
+                    else:
+                        try:
+                            def update_download_progress_url(message, current, total):
+                                """다운로드 진행 상황 업데이트"""
+                                status_text.text(message)
+                                # 0.6 ~ 0.75 범위에서 진행률 표시
+                                progress = 0.6 + (current / total) * 0.15
+                                progress_bar.progress(progress)
 
-                    product_info = {
-                        "상품명": product_name,
-                        "이미지_경로": saved_path,
-                        "이미지_개수": len(image_urls)
-                    }
+                            output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
+                            saved_path = st.session_state.crawler.detail_crawler.download_and_merge_images(
+                                image_urls, output_image_path, progress_callback=update_download_progress_url,
+                                split_mode=split_mode
+                            )
+
+                            product_info["이미지_경로"] = saved_path
+                            product_info["이미지_개수"] = len(image_urls)
+                        except Exception as e:
+                            st.error(f"⚠️  이미지 병합 중 오류 발생: {e}")
 
                 progress_bar.progress(0.75)
 
-                # 7. 리뷰 수집 (옵션)
+                # 6. 리뷰 텍스트 수집 (옵션)
                 if collect_reviews:
-                    status_text.text("📝 리뷰 수집 중...")
-                    reviews = st.session_state.crawler.review_crawler.crawl_all_reviews()
-                    if reviews:
-                        review_file = os.path.join(save_folder, "reviews.txt")
-                        st.session_state.crawler.review_crawler.save_reviews_to_file(reviews, review_file)
-                        product_info["리뷰_개수"] = len(reviews)
-                    else:
-                        product_info["리뷰_개수"] = 0
+                    status_text.text("📝 리뷰 텍스트 수집 중...")
+                    review_file = os.path.join(save_folder, "reviews.txt")
+                    review_count = st.session_state.crawler.review_crawler.crawl_all_reviews(
+                        output_path=review_file,
+                        end_date=review_end_date
+                    )
+                    product_info["수집된_리뷰_개수"] = review_count
 
                 progress_bar.progress(0.85)
 
-                # 8. 데이터 저장
+                # 7. 데이터 저장
                 status_text.text("💾 데이터 저장 중...")
                 st.session_state.crawler.save_product_info(product_info, save_folder, save_format)
 
@@ -426,12 +505,27 @@ with tab2:
                     "상품명": product_name,
                     "폴더": save_folder,
                     "이미지": product_info.get("이미지_경로", ""),
-                    "이미지_개수": product_info.get("이미지_개수", 0)
+                    "이미지_개수": product_info.get("이미지_개수", 0),
+                    "별점": product_info.get("별점", 0.0),
+                    "리뷰_총개수": product_info.get("리뷰_총개수", 0),
+                    "수집된_리뷰_개수": product_info.get("수집된_리뷰_개수", 0)
                 }
                 st.session_state.results.append(result)
 
                 # 성공 메시지
                 st.success("🎉 크롤링 완료!")
+
+                # 수집 결과 요약
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("⭐ 별점", f"{product_info.get('별점', 0.0)}점")
+                with col2:
+                    st.metric("📊 총 리뷰", f"{product_info.get('리뷰_총개수', 0)}개")
+                with col3:
+                    st.metric("📸 이미지", f"{product_info.get('이미지_개수', 0)}개")
+
+                if product_info.get('수집된_리뷰_개수', 0) > 0:
+                    st.info(f"📝 {product_info['수집된_리뷰_개수']}개의 리뷰를 수집했습니다")
 
                 # 진행 표시 제거
                 progress_bar.empty()
