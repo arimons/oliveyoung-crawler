@@ -9,6 +9,7 @@ from PIL import Image
 import requests
 import time
 import os
+import tempfile
 from typing import List, Dict
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -23,6 +24,23 @@ class ProductDetailCrawler:
             driver: Selenium WebDriver 인스턴스
         """
         self.driver = driver
+
+        # Desktop 뷰 설정
+        print("🖥️  Desktop 뷰 활성화 중...")
+        try:
+            # Device Metrics 설정
+            # width=1920px (Desktop 모드, Legacy layout)
+            self.driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+                'width': 1920,
+                'height': 1080,
+                'deviceScaleFactor': 1,  # Desktop DPR=1
+                'mobile': False,  # Desktop User-Agent
+                'screenOrientation': {'type': 'portraitPrimary', 'angle': 0}
+            })
+
+            print("✅ Desktop 뷰 설정 완료 (1920px viewport, DPR=1)")
+        except Exception as e:
+            print(f"⚠️  반응형 모바일 뷰 설정 실패: {e}, 기본 모드로 진행")
 
     def go_to_product_detail(self, product_url: str):
         """
@@ -48,7 +66,7 @@ class ProductDetailCrawler:
 
     def extract_review_metadata(self) -> Dict[str, any]:
         """
-        리뷰 개수와 별점 추출 (상품 설명 근처에서 직접 추출)
+        리뷰 개수와 별점 추출 (Legacy layout - #repReview)
 
         Returns:
             {"리뷰_총개수": int, "별점": float} 형태의 딕셔너리
@@ -56,97 +74,38 @@ class ProductDetailCrawler:
         metadata = {"리뷰_총개수": 0, "별점": 0.0}
 
         try:
-            # 디버깅: 페이지 HTML 일부 저장
-            try:
-                page_html = self.driver.page_source
-                with open("debug_review_metadata_page.html", "w", encoding="utf-8") as f:
-                    f.write(page_html)
-                print(f"📁 디버깅용 페이지 HTML 저장: debug_review_metadata_page.html")
-            except:
-                pass
-
-            # JavaScript로 React 렌더링된 DOM에서 직접 추출
+            # Legacy layout selector로 추출
+            # #repReview: <b>별점</b> <em>(리뷰수건)</em>
             result = self.driver.execute_script(r"""
                 const debug = {};
-
-                // 별점 추출
                 let rating = 0.0;
-
-                // 패턴 1: <p id="repReview"><b>4.8</b></p> 구조 (가장 우선)
-                const repReviewElem = document.querySelector('#repReview b');
-                if (repReviewElem) {
-                    const text = repReviewElem.textContent.trim();
-                    const match = text.match(/([0-9]+\.?[0-9]*)/);
-                    if (match) {
-                        rating = parseFloat(match[1]);
-                        debug.ratingSource = '#repReview > b';
-                        debug.ratingText = text;
-                        debug.ratingHTML = repReviewElem.outerHTML;
-                    }
-                }
-                
-                // 패턴 2: <span class="rating"> 요소에서 직접 추출
-                if (rating === 0.0) {
-                    const ratingSpan = document.querySelector('span.rating');
-                    if (ratingSpan) {
-                        // "평점4.8" 또는 "평점 4.8" 형태에서 숫자만 추출
-                        const text = ratingSpan.textContent.trim();
-                        const match = text.match(/([0-9]+\.[0-9]+)/);
-                        if (match) {
-                            rating = parseFloat(match[1]);
-                            debug.ratingSource = 'span.rating querySelector';
-                            debug.ratingText = text;
-                            debug.ratingHTML = ratingSpan.outerHTML.substring(0, 150);
-                        }
-                    }
-                }
-
-                // 패턴 3: ReviewArea_rating 클래스 검색
-                if (rating === 0.0) {
-                    const reviewAreaRating = document.querySelector('[class*="ReviewArea_rating"]');
-                    if (reviewAreaRating) {
-                        const text = reviewAreaRating.textContent.trim();
-                        const match = text.match(/([0-9]+\.[0-9]+)/);
-                        if (match) {
-                            rating = parseFloat(match[1]);
-                            debug.ratingSource = 'ReviewArea_rating class';
-                            debug.ratingText = text;
-                        }
-                    }
-                }
-
-                // 리뷰수 추출 - ReviewArea_review-count 또는 "리뷰" 텍스트
                 let totalCount = 0;
 
-                // 패턴 1: ReviewArea_review-count 클래스에서 추출
-                const reviewCountElem = document.querySelector('[class*="ReviewArea_review-count"]');
-                if (reviewCountElem) {
-                    const text = reviewCountElem.textContent;
-                    const match = text.match(/([0-9,]+)/);
-                    if (match) {
-                        totalCount = parseInt(match[1].replace(/,/g, ''));
-                        debug.reviewSource = 'ReviewArea_review-count class';
-                        debug.reviewHTML = reviewCountElem.outerHTML.substring(0, 150);
-                        debug.reviewText = text.substring(0, 50);
+                // 별점: #repReview > b - "4.9"
+                const ratingElem = document.querySelector('#repReview > b');
+                if (ratingElem) {
+                    const text = ratingElem.textContent.trim();
+                    debug.ratingText = text;
+                    debug.ratingHTML = ratingElem.outerHTML;
+
+                    // 별점 추출
+                    const ratingMatch = text.match(/([0-9]+\.?[0-9]*)/);
+                    if (ratingMatch) {
+                        rating = parseFloat(ratingMatch[1]);
                     }
                 }
 
-                // 패턴 2: "리뷰" 텍스트가 포함된 요소에서 숫자 찾기 (fallback)
-                if (totalCount === 0) {
-                    const allElements = Array.from(document.querySelectorAll('*'));
-                    const reviewElem = allElements.find(el => {
-                        const text = el.textContent;
-                        return text.includes('리뷰') && /[0-9,]+/.test(text) && text.length < 50;
-                    });
+                // 리뷰수: #repReview > em - "(37,563건)"
+                const totalElem = document.querySelector('#repReview > em');
+                if (totalElem) {
+                    const text = totalElem.textContent.trim();
+                    debug.totalText = text;
+                    debug.totalHTML = totalElem.outerHTML;
 
-                    if (reviewElem) {
-                        const match = reviewElem.textContent.match(/([0-9,]+)/);
-                        if (match) {
-                            totalCount = parseInt(match[1].replace(/,/g, ''));
-                            debug.reviewSource = 'element with 리뷰 text (fallback)';
-                            debug.reviewHTML = reviewElem.outerHTML.substring(0, 150);
-                            debug.reviewText = reviewElem.textContent.substring(0, 50);
-                        }
+                    // 리뷰수 추출: "(37,563건)" → "37563"
+                    const countMatch = text.match(/\(([0-9,]+)/);
+                    if (countMatch) {
+                        totalCount = parseInt(countMatch[1].replace(/,/g, ''));
                     }
                 }
 
@@ -160,18 +119,10 @@ class ProductDetailCrawler:
             if result:
                 # 디버깅 정보 출력
                 debug_info = result.get("debug", {})
-                print(f"\n🔍 추출 정보:")
-                print(f"  별점 출처: {debug_info.get('ratingSource', 'N/A')}")
                 if debug_info.get('ratingText'):
                     print(f"  별점 텍스트: {debug_info.get('ratingText')}")
-                if debug_info.get('ratingHTML'):
-                    print(f"  별점 HTML: {debug_info.get('ratingHTML')}")
-
-                print(f"\n  리뷰수 출처: {debug_info.get('reviewSource', 'N/A')}")
-                if debug_info.get('reviewText'):
-                    print(f"  리뷰수 텍스트: {debug_info.get('reviewText')}")
-                if debug_info.get('reviewHTML'):
-                    print(f"  리뷰수 HTML: {debug_info.get('reviewHTML')}")
+                if debug_info.get('totalText'):
+                    print(f"  리뷰수 텍스트: {debug_info.get('totalText')}")
 
                 metadata["리뷰_총개수"] = result.get("total", 0)
                 metadata["별점"] = result.get("rating", 0.0)
@@ -200,49 +151,43 @@ class ProductDetailCrawler:
         try:
             print("🔘 '상품설명 더보기' 버튼 찾는 중...")
 
-            # 더보기 버튼 찾기
-            wait = WebDriverWait(self.driver, 10)
-            more_button = wait.until(
-                EC.presence_of_element_located((By.ID, "btn_toggle_detail_image"))
-            )
-
-            # 버튼이 보이도록 스크롤
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
-            time.sleep(1)
-
-            # 버튼 클릭
-            more_button.click()
-            print("✅ 더보기 버튼 클릭 완료")
-            time.sleep(2)  # 이미지 로딩 대기
-
-            # 페이지 끝까지 천천히 스크롤하여 모든 lazy-load 이미지 로드
-            print("📜 페이지 스크롤하여 모든 이미지 로딩 중...")
-            self.scroll_to_load_all_images()
-
-            return True
-
-        except Exception as e:
-            print(f"⚠️  더보기 버튼을 찾을 수 없거나 이미 펼쳐져 있습니다: {e}")
-            print("현재 페이지 URL:", self.driver.current_url)
-
-            # 다른 가능한 버튼 ID들 시도
-            alternative_buttons = [
-                "btnToggleDetail",
-                "btn_detail_more",
-                "detail_more_btn"
+            # 여러 selector 시도
+            selectors = [
+                "#btn_toggle_detail_image",  # 사용자 확인 (1000px desktop)
+                "#tab-panels > section > div.GoodsDetailTabs_controller__Cd5sb > button",  # 좁은 모바일
+                "#controller-button",  # New structure
+                ".prd_detail_box .btn_toggle",  # Old structure fallback
             ]
 
-            for btn_id in alternative_buttons:
+            for selector in selectors:
                 try:
-                    alt_button = self.driver.find_element(By.ID, btn_id)
-                    alt_button.click()
-                    print(f"✅ 대체 버튼 '{btn_id}' 클릭 성공")
-                    time.sleep(2)
+                    button = self.driver.find_element(By.CSS_SELECTOR, selector)
+
+                    # 버튼이 보이도록 스크롤
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                    time.sleep(0.5)
+
+                    # 버튼 클릭
+                    button.click()
+                    print(f"✅ 더보기 버튼 클릭 완료 ({selector})")
+                    time.sleep(2)  # 이미지 로딩 대기
+
+                    # 페이지 끝까지 천천히 스크롤하여 모든 lazy-load 이미지 로드
+                    print("📜 페이지 스크롤하여 모든 이미지 로딩 중...")
+                    self.scroll_to_load_all_images()
+
                     return True
-                except:
+                except Exception:
                     continue
 
-            print("⚠️  모든 더보기 버튼 시도 실패 - 이미 펼쳐져 있을 수 있습니다")
+            print("⚠️  더보기 버튼을 찾을 수 없음 - 이미 펼쳐져 있을 수 있습니다")
+            print("📜 스크롤하여 이미지 로딩 시도...")
+            self.scroll_to_load_all_images()
+            return False
+
+        except Exception as e:
+            print(f"⚠️  더보기 버튼 처리 중 오류: {e}")
+            print("현재 페이지 URL:", self.driver.current_url)
             return False
 
     def scroll_to_load_all_images(self):
@@ -319,72 +264,41 @@ class ProductDetailCrawler:
 
     def extract_product_images(self) -> List[str]:
         """
-        상품 설명 이미지 URL 추출 (정확도 개선)
+        상품 설명 이미지 URL 추출 (Legacy layout - #tempHtml2의 모든 div에서)
 
         Returns:
             이미지 URL 리스트
         """
         print("📸 상품 설명 이미지 URL 추출 중...")
-        
+
         # 성능 개선: implicit wait를 임시로 0으로 설정
         original_implicit_wait = self.driver.timeouts.implicit_wait
         self.driver.implicitly_wait(0)
 
         try:
-            # 1. 가장 정확한 선택자로 먼저 시도
-            primary_selector = "div[class*='GoodsDetailTabs_contents-area'] img"
-            print(f"  1️⃣ 우선 순위 선택자로 탐색: '{primary_selector}'")
+            # Legacy layout: #tempHtml2의 모든 div 안의 이미지 추출
+            primary_selector = "#tempHtml2 div img"
+
+            print(f"  🎯 Legacy layout 선택자로 탐색: '{primary_selector}'")
             images = self.driver.find_elements(By.CSS_SELECTOR, primary_selector)
 
             if images:
-                print(f"  ✅ 우선 순위 선택자로 {len(images)}개 이미지 발견. 이 이미지를 사용합니다.")
+                print(f"  ✅ {len(images)}개 이미지 발견")
             else:
-                # 2. 우선 순위 선택자가 실패하면, 기존의 Fallback 로직 사용
-                print(f"  ⚠️ 우선 순위 선택자 실패. Fallback 로직으로 전환합니다.")
-                selectors = [
-                    "img.s-lazy", ".detail_cont img", "#artcInfo img", ".prd_detail_box img",
-                    ".detail_info_wrap img", "#gdasDetail img", ".goods_detail_cont img",
-                    "#detail_img_expand img", ".prd_detail img", "div[class*='detail'] img",
-                    "div[id*='detail'] img", "img[src*='amc.apglobal.com']", "img[src*='asset']",
-                ]
-                best_images = []
-                best_selector = None
-                best_total_area = 0
-
-                for selector in selectors:
-                    try:
-                        found_images = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        if not found_images: continue
-
-                        total_area = self.driver.execute_script("""
-                            const images = arguments[0];
-                            return images.reduce((sum, img) => {
-                                const w = img.naturalWidth || img.width || 0;
-                                const h = img.naturalHeight || img.height || 0;
-                                return sum + (w * h);
-                            }, 0);
-                        """, found_images)
-
-                        print(f"    '{selector}': {len(found_images)}개 이미지, 총 면적 {total_area:,}px²")
-                        if total_area > best_total_area:
-                            best_images = found_images
-                            best_selector = selector
-                            best_total_area = total_area
-                    except Exception as e:
-                        print(f"    '{selector}': 오류 - {e}")
-                        continue
-                
-                images = best_images
+                print("  ⚠️  #tempHtml2 div img로 이미지를 찾을 수 없음. Fallback 시도...")
+                # Fallback: img.s-lazy 클래스로 시도
+                images = self.driver.find_elements(By.CSS_SELECTOR, "img.s-lazy")
                 if images:
-                    print(f"  ✅ Fallback 최종 선택: '{best_selector}'로 {len(images)}개 이미지 사용")
+                    print(f"  ✅ Fallback(img.s-lazy)으로 {len(images)}개 이미지 발견")
 
             if not images:
                 print("❌ 상품 설명 이미지를 찾을 수 없습니다")
                 return []
 
-            # 3. 이미지 URL 추출 및 필터링
+            # 이미지 URL 추출 및 필터링
             image_urls = []
             seen_urls = set()
+
             for idx, img in enumerate(images):
                 try:
                     img_url = img.get_attribute("src") or img.get_attribute("data-src")
@@ -395,14 +309,15 @@ class ProductDetailCrawler:
                     if "/thumbnails/" in img_url:
                         print(f"  {idx+1}. [필터링] 썸네일 제외: {img_url[:80]}...")
                         continue
-                        
+
                     if img_url in seen_urls:
                         continue
 
                     # 필터링 로직 (너무 작은 이미지 제외)
                     width = img.get_attribute("width")
                     height = img.get_attribute("height")
-                    
+
+                    # 너무 작은 이미지 제외 (width < 100 or height < 50)
                     width_ok = True
                     if width:
                         try:
@@ -677,8 +592,84 @@ class ProductDetailCrawler:
         print(f"✅ 총 {len(groups)}개 타일로 분할")
         return groups
 
+    def download_images_individually(self, image_urls: List[str], output_dir: str) -> List[str]:
+        """
+        이미지들을 개별 파일로 다운로드 (디버그/테스트용)
+
+        Args:
+            image_urls: 이미지 URL 리스트
+            output_dir: 저장할 디렉토리 경로
+
+        Returns:
+            저장된 파일 경로 리스트
+        """
+        if not image_urls:
+            print("❌ 다운로드할 이미지가 없습니다")
+            return []
+
+        # 출력 디렉토리 생성
+        os.makedirs(output_dir, exist_ok=True)
+
+        print(f"\n📥 개별 이미지 다운로드 시작 (총 {len(image_urls)}개)")
+        print(f"📁 저장 경로: {output_dir}")
+        print(f"⚡ 병렬 다운로드 시작 (최대 10개 동시)")
+
+        # 단일 이미지 다운로드 함수
+        def download_and_save_single(url, idx):
+            """단일 이미지 다운로드 및 저장"""
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+
+                img = Image.open(BytesIO(response.content))
+
+                # RGB로 변환
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+
+                # 파일명: image_001.jpg, image_002.jpg, ...
+                filename = f"image_{idx+1:03d}.jpg"
+                filepath = os.path.join(output_dir, filename)
+
+                # 저장
+                img.save(filepath, 'JPEG', quality=95)
+
+                return idx, filepath, img.width, img.height, None
+            except Exception as e:
+                return idx, None, None, None, str(e)
+
+        # 병렬 다운로드
+        saved_files = {}
+        completed_count = 0
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            # 모든 다운로드 작업 제출
+            future_to_idx = {
+                executor.submit(download_and_save_single, url, idx): idx
+                for idx, url in enumerate(image_urls)
+            }
+
+            # 완료되는 대로 처리
+            for future in as_completed(future_to_idx):
+                idx, filepath, width, height, error = future.result()
+                completed_count += 1
+
+                if error:
+                    print(f"  [{idx+1:3d}/{len(image_urls)}] ❌ 다운로드 실패: {error}")
+                else:
+                    saved_files[idx] = filepath
+                    print(f"  [{idx+1:3d}/{len(image_urls)}] ✅ 저장: {os.path.basename(filepath)} ({width}x{height}px)")
+
+        # 순서대로 정렬하여 리스트로 변환
+        result = [saved_files[i] for i in sorted(saved_files.keys())]
+
+        print(f"\n✅ 개별 다운로드 완료: {len(result)}/{len(image_urls)}개 성공")
+        print(f"📁 저장 위치: {output_dir}")
+
+        return result
+
     def download_and_merge_images(self, image_urls: List[str], output_path: str, progress_callback=None,
-                                   split_mode: str = "context", display_resolution: str = "1920x1080") -> str:
+                                   split_mode: str = "aggressive", display_resolution: str = "1920x1080") -> str:
         """
         이미지들을 다운로드하고 선택한 모드에 따라 분할하여 병합
 
@@ -878,7 +869,7 @@ class ProductDetailCrawler:
 
     def extract_product_info_from_detail(self) -> Dict:
         """
-        상세 페이지에서 상품 기본 정보 추출
+        상세 페이지에서 상품 기본 정보 추출 (Legacy layout)
 
         Returns:
             상품 정보 딕셔너리
@@ -887,35 +878,56 @@ class ProductDetailCrawler:
         product_info = {}
 
         try:
-            # 상품명
-            try:
-                name_elem = self.driver.find_element(By.CSS_SELECTOR, ".prd_name")
-                product_info["상품명"] = name_elem.text.strip()
-            except:
-                product_info["상품명"] = "정보 없음"
+            # Legacy layout selector로 추출
+            result = self.driver.execute_script(r"""
+                const info = {};
 
-            # 브랜드
-            try:
-                brand_elem = self.driver.find_element(By.CSS_SELECTOR, ".prd_brand")
-                product_info["브랜드"] = brand_elem.text.strip()
-            except:
-                product_info["브랜드"] = "정보 없음"
+                // 상품명: #Contents > div.prd_detail_box.renew > div.right_area > div > p.prd_name
+                const nameElem = document.querySelector('#Contents > div.prd_detail_box.renew > div.right_area > div > p.prd_name');
+                if (nameElem) {
+                    info.name = nameElem.textContent.trim();
+                }
 
-            # 가격
-            try:
-                price_elem = self.driver.find_element(By.CSS_SELECTOR, ".price")
-                product_info["가격"] = price_elem.text.strip()
-            except:
-                product_info["가격"] = "정보 없음"
+                // 상품가격: #Contents > div.prd_detail_box.renew > div.right_area > div > div.price
+                // price 1: 할인전, price 2: 할인후
+                const priceContainer = document.querySelector('#Contents > div.prd_detail_box.renew > div.right_area > div > div.price');
+                if (priceContainer) {
+                    // 가격 spans 추출
+                    const priceSpans = priceContainer.querySelectorAll('span.price-2, span.price-1');
 
-            # URL
+                    // price-2가 있으면 할인가, price-1이 원가
+                    const price2 = priceContainer.querySelector('span.price-2');
+                    const price1 = priceContainer.querySelector('span.price-1');
+
+                    if (price2) {
+                        // 할인가 있음
+                        info.price = price2.textContent.trim();  // 할인후 가격
+                        if (price1) {
+                            info.beforePrice = price1.textContent.trim();  // 할인전 가격
+                        }
+                    } else if (price1) {
+                        // 할인가 없음, price-1만 있음
+                        info.price = price1.textContent.trim();
+                        info.beforePrice = info.price;  // 동일
+                    }
+                }
+
+                return info;
+            """)
+
+            # 결과 저장
+            product_info["상품명"] = result.get("name", "정보 없음")
+            product_info["정상가"] = result.get("beforePrice", "정보 없음")
+            product_info["판매가"] = result.get("price", "정보 없음")
             product_info["URL"] = self.driver.current_url
 
             print(f"✅ 상품명: {product_info['상품명']}")
-            print(f"   브랜드: {product_info['브랜드']}")
-            print(f"   가격: {product_info['가격']}")
+            print(f"   정상가: {product_info['정상가']}")
+            print(f"   판매가: {product_info['판매가']}")
 
         except Exception as e:
             print(f"⚠️  상품 정보 추출 중 오류: {e}")
+            import traceback
+            traceback.print_exc()
 
         return product_info

@@ -51,7 +51,7 @@ if 'crawler' not in st.session_state:
 if 'results' not in st.session_state:
     st.session_state.results = []
 if 'headless' not in st.session_state:
-    st.session_state.headless = True
+    st.session_state.headless = False  # 봇 감지 회피를 위해 항상 GUI 모드
 
 
 def init_crawler():
@@ -80,16 +80,18 @@ st.markdown("---")
 with st.sidebar:
     st.header("⚙️ 설정")
 
-    # 브라우저 표시 옵션
-    show_browser = st.checkbox(
-        "브라우저 표시",
-        value=False,
-        help="체크하면 크롬 브라우저가 화면에 표시됩니다",
-        key="show_browser_checkbox"
-    )
+    # 브라우저 표시 옵션 (봇 감지 회피를 위해 항상 ON)
+    # show_browser = st.checkbox(
+    #     "브라우저 표시",
+    #     value=True,
+    #     disabled=True,
+    #     help="봇 감지 회피를 위해 항상 표시됩니다",
+    #     key="show_browser_checkbox"
+    # )
+    st.caption("✅ 브라우저 표시: 항상 ON (봇 감지 회피)")
 
-    # headless 옵션은 반대
-    st.session_state.headless = not show_browser
+    # headless는 항상 False (GUI 모드)
+    st.session_state.headless = False
 
     # 저장 형식
     save_format = st.radio(
@@ -147,16 +149,16 @@ with st.sidebar:
         split_mode = st.radio(
             "분할 방식",
             options=["conservative", "aggressive", "tile"],
-            index=0,
+            index=1,  # aggressive가 기본값
             format_func=lambda x: {
-                "conservative": " 최대한 합치기 (기본)",
-                "aggressive": "🎨 색상 경계로 분할",
+                "conservative": " 최대한 합치기",
+                "aggressive": "🎨 색상 경계로 분할 (기본)",
                 "tile": "🖥️ 타일 레이아웃"
             }.get(x, x),
             help="최대한 합치기: 이미지 최대 높이까지 합침 | 색상 경계로 분할: 디자인이 바뀌면 분할 | 타일 레이아웃: 16:9 비율로 분할"
         )
     else:
-        split_mode = "context"  # 기본값
+        split_mode = "aggressive"  # 기본값
 
     st.markdown("---")
 

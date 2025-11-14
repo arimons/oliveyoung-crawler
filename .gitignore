@@ -12,6 +12,12 @@ dist/
 build/
 test*
 debug*
+show_browser.py
+merged_images_*/
+
+# Legacy apps (deprecated)
+app.py
+app_v2.py
 
 # Data
 data/

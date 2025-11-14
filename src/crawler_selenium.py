@@ -12,6 +12,8 @@ import time
 import json
 from datetime import datetime
 from typing import List, Dict
+import tempfile
+import shutil
 
 
 class OliveyoungCrawler:
@@ -27,13 +29,27 @@ class OliveyoungCrawler:
         self.headless = headless
         self.base_url = "https://www.oliveyoung.co.kr"
         self.driver = None
+        self.temp_user_data = None  # 임시 User Data 디렉토리
 
     def start(self):
         """브라우저 시작"""
         print("🚀 브라우저 시작 중...")
 
+        # 임시 User Data 디렉토리 생성 (Hybrid layout 방지)
+        self.temp_user_data = tempfile.mkdtemp(prefix="chrome_user_data_")
+        print(f"🔧 임시 User Data 디렉토리: {self.temp_user_data}")
+
         # Chrome 옵션 설정
         options = webdriver.ChromeOptions()
+
+        # 임시 User Data 디렉토리 사용 (매번 새로운 프로필)
+        options.add_argument(f'--user-data-dir={self.temp_user_data}')
+
+        # 봇 감지 회피 설정
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+
         if self.headless:
             options.add_argument('--headless')
         options.add_argument('--no-sandbox')
@@ -57,6 +73,10 @@ class OliveyoungCrawler:
 
         service = Service(actual_driver)
         self.driver = webdriver.Chrome(service=service, options=options)
+
+        # WebDriver 속성 숨기기
+        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
         self.driver.implicitly_wait(10)
 
         print("✅ 브라우저 시작 완료")
@@ -67,6 +87,15 @@ class OliveyoungCrawler:
             self.driver.quit()
             print("🛑 브라우저 종료")
         self.driver = None
+
+        # 임시 User Data 디렉토리 정리
+        if self.temp_user_data:
+            try:
+                shutil.rmtree(self.temp_user_data)
+                print(f"🧹 임시 디렉토리 정리 완료")
+            except Exception as e:
+                print(f"⚠️  임시 디렉토리 정리 실패: {e}")
+            self.temp_user_data = None
 
     def navigate_to_home(self):
         """올리브영 홈페이지로 이동"""
