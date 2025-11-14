@@ -66,32 +66,47 @@ class ProductDetailCrawler:
                 pass
 
             # JavaScript로 React 렌더링된 DOM에서 직접 추출
-            result = self.driver.execute_script("""
+            result = self.driver.execute_script(r"""
                 const debug = {};
 
-                // 별점 추출 - <span class="rating"> 구조에서 추출
+                // 별점 추출
                 let rating = 0.0;
 
-                // 패턴 1: <span class="rating"> 요소에서 직접 추출
-                const ratingSpan = document.querySelector('span.rating');
-                if (ratingSpan) {
-                    // "평점4.8" 또는 "평점 4.8" 형태에서 숫자만 추출
-                    const text = ratingSpan.textContent.trim();
-                    const match = text.match(/([0-9]+\\.[0-9]+)/);
+                // 패턴 1: <p id="repReview"><b>4.8</b></p> 구조 (가장 우선)
+                const repReviewElem = document.querySelector('#repReview b');
+                if (repReviewElem) {
+                    const text = repReviewElem.textContent.trim();
+                    const match = text.match(/([0-9]+\.?[0-9]*)/);
                     if (match) {
                         rating = parseFloat(match[1]);
-                        debug.ratingSource = 'span.rating querySelector';
+                        debug.ratingSource = '#repReview > b';
                         debug.ratingText = text;
-                        debug.ratingHTML = ratingSpan.outerHTML.substring(0, 150);
+                        debug.ratingHTML = repReviewElem.outerHTML;
+                    }
+                }
+                
+                // 패턴 2: <span class="rating"> 요소에서 직접 추출
+                if (rating === 0.0) {
+                    const ratingSpan = document.querySelector('span.rating');
+                    if (ratingSpan) {
+                        // "평점4.8" 또는 "평점 4.8" 형태에서 숫자만 추출
+                        const text = ratingSpan.textContent.trim();
+                        const match = text.match(/([0-9]+\.[0-9]+)/);
+                        if (match) {
+                            rating = parseFloat(match[1]);
+                            debug.ratingSource = 'span.rating querySelector';
+                            debug.ratingText = text;
+                            debug.ratingHTML = ratingSpan.outerHTML.substring(0, 150);
+                        }
                     }
                 }
 
-                // 패턴 2: ReviewArea_rating 클래스 검색
+                // 패턴 3: ReviewArea_rating 클래스 검색
                 if (rating === 0.0) {
                     const reviewAreaRating = document.querySelector('[class*="ReviewArea_rating"]');
                     if (reviewAreaRating) {
                         const text = reviewAreaRating.textContent.trim();
-                        const match = text.match(/([0-9]+\\.[0-9]+)/);
+                        const match = text.match(/([0-9]+\.[0-9]+)/);
                         if (match) {
                             rating = parseFloat(match[1]);
                             debug.ratingSource = 'ReviewArea_rating class';
@@ -304,193 +319,114 @@ class ProductDetailCrawler:
 
     def extract_product_images(self) -> List[str]:
         """
-        상품 설명 이미지 URL 추출
+        상품 설명 이미지 URL 추출 (정확도 개선)
 
         Returns:
             이미지 URL 리스트
         """
         print("📸 상품 설명 이미지 URL 추출 중...")
-        image_urls = []
-
-        # 성능 개선: implicit wait를 임시로 0으로 설정 (빠른 검색)
+        
+        # 성능 개선: implicit wait를 임시로 0으로 설정
         original_implicit_wait = self.driver.timeouts.implicit_wait
         self.driver.implicitly_wait(0)
 
         try:
-            # 여러 가능한 선택자 시도 (올리브영 페이지 구조 기반)
-            selectors = [
-                # 상품 설명 영역의 이미지들 (실제 HTML 구조 기반)
-                "img.s-lazy",                           # s-lazy 클래스 이미지 (최우선)
-                ".detail_cont img",                    # 상세 설명 컨테이너
-                "#artcInfo img",                        # 상품 정보 영역
-                ".prd_detail_box img",                  # 상품 상세 박스
-                ".detail_info_wrap img",                # 상세 정보 래퍼
-                "#gdasDetail img",                      # 상품 상세 ID
-                ".goods_detail_cont img",               # 상품 상세 컨텐츠
-                "#detail_img_expand img",               # 확장 이미지 영역
-                ".prd_detail img",                      # 상품 상세
-                "div[class*='detail'] img",             # detail 클래스 포함하는 div 안의 이미지
-                "div[id*='detail'] img",                # detail ID 포함하는 div 안의 이미지
-                "img[src*='amc.apglobal.com']",        # AMC CDN 이미지
-                "img[src*='asset']",                    # asset 경로 이미지
-            ]
+            # 1. 가장 정확한 선택자로 먼저 시도
+            primary_selector = "div[class*='GoodsDetailTabs_contents-area'] img"
+            print(f"  1️⃣ 우선 순위 선택자로 탐색: '{primary_selector}'")
+            images = self.driver.find_elements(By.CSS_SELECTOR, primary_selector)
 
-            # 모든 selector를 시도하고 총 이미지 면적이 가장 큰 것 선택
-            best_images = []
-            best_selector = None
-            best_total_area = 0
-
-            for selector in selectors:
-                try:
-                    found_images = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if not found_images:
-                        print(f"  '{selector}': 이미지 없음")
-                        continue
-
-                    # 총 면적 계산 (width * height 합계) - JavaScript로 한 번에 계산
-                    total_area = self.driver.execute_script("""
-                        const images = arguments[0];
-                        return images.reduce((sum, img) => {
-                            const w = img.naturalWidth || img.width || 0;
-                            const h = img.naturalHeight || img.height || 0;
-                            return sum + (w * h);
-                        }, 0);
-                    """, found_images)
-
-                    print(f"  '{selector}': {len(found_images)}개 이미지, 총 면적 {total_area:,}px²")
-
-                    # 총 면적이 가장 큰 selector 선택
-                    if total_area > best_total_area:
-                        best_images = found_images
-                        best_selector = selector
-                        best_total_area = total_area
-
-                except Exception as e:
-                    print(f"  '{selector}': 오류 - {e}")
-                    continue
-
-            images = best_images
             if images:
-                print(f"✅ 최종 선택: '{best_selector}'로 {len(images)}개 이미지 사용 (총 면적: {best_total_area:,}px²)")
+                print(f"  ✅ 우선 순위 선택자로 {len(images)}개 이미지 발견. 이 이미지를 사용합니다.")
             else:
-                print("⚠️ 모든 selector에서 이미지를 찾지 못함")
+                # 2. 우선 순위 선택자가 실패하면, 기존의 Fallback 로직 사용
+                print(f"  ⚠️ 우선 순위 선택자 실패. Fallback 로직으로 전환합니다.")
+                selectors = [
+                    "img.s-lazy", ".detail_cont img", "#artcInfo img", ".prd_detail_box img",
+                    ".detail_info_wrap img", "#gdasDetail img", ".goods_detail_cont img",
+                    "#detail_img_expand img", ".prd_detail img", "div[class*='detail'] img",
+                    "div[id*='detail'] img", "img[src*='amc.apglobal.com']", "img[src*='asset']",
+                ]
+                best_images = []
+                best_selector = None
+                best_total_area = 0
+
+                for selector in selectors:
+                    try:
+                        found_images = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if not found_images: continue
+
+                        total_area = self.driver.execute_script("""
+                            const images = arguments[0];
+                            return images.reduce((sum, img) => {
+                                const w = img.naturalWidth || img.width || 0;
+                                const h = img.naturalHeight || img.height || 0;
+                                return sum + (w * h);
+                            }, 0);
+                        """, found_images)
+
+                        print(f"    '{selector}': {len(found_images)}개 이미지, 총 면적 {total_area:,}px²")
+                        if total_area > best_total_area:
+                            best_images = found_images
+                            best_selector = selector
+                            best_total_area = total_area
+                    except Exception as e:
+                        print(f"    '{selector}': 오류 - {e}")
+                        continue
+                
+                images = best_images
+                if images:
+                    print(f"  ✅ Fallback 최종 선택: '{best_selector}'로 {len(images)}개 이미지 사용")
 
             if not images:
                 print("❌ 상품 설명 이미지를 찾을 수 없습니다")
-                print("현재 페이지 URL:", self.driver.current_url)
-                print("페이지 타이틀:", self.driver.title)
-                # 페이지 소스 일부 저장 (디버깅용)
-                try:
-                    with open("debug_page_source.html", "w", encoding="utf-8") as f:
-                        f.write(self.driver.page_source)
-                    print("📁 디버깅용 페이지 소스 저장: debug_page_source.html")
-                except:
-                    pass
                 return []
 
-            # 이미지 URL 추출 (중복 제거를 위해 set 사용 후 순서 유지)
+            # 3. 이미지 URL 추출 및 필터링
+            image_urls = []
             seen_urls = set()
             for idx, img in enumerate(images):
                 try:
-                    # src 또는 data-src 속성 확인
                     img_url = img.get_attribute("src") or img.get_attribute("data-src")
+                    if not (img_url and img_url.startswith("http")):
+                        continue
 
-                    if img_url and img_url.startswith("http"):
-                        # 중복 URL 체크
-                        if img_url in seen_urls:
-                            print(f"  {idx+1}. [중복 제외] {img_url[:80]}...")
-                            continue
+                    # 썸네일 URL 필터링
+                    if "/thumbnails/" in img_url:
+                        print(f"  {idx+1}. [필터링] 썸네일 제외: {img_url[:80]}...")
+                        continue
+                        
+                    if img_url in seen_urls:
+                        continue
 
-                        # APGLOBAL 에셋 예외 처리
-                        is_apglobal_asset = "amc.apglobal.com" in img_url
+                    # 필터링 로직 (너무 작은 이미지 제외)
+                    width = img.get_attribute("width")
+                    height = img.get_attribute("height")
+                    
+                    width_ok = True
+                    if width:
+                        try:
+                            if int(width) < 100: width_ok = False
+                        except: pass
 
-                        # 너무 작은 이미지는 제외 (로딩 스피너, 아이콘, 구분선 등)
-                        width = img.get_attribute("width")
-                        height = img.get_attribute("height")
-                        style = img.get_attribute("style") or ""
+                    height_ok = True
+                    if height:
+                        try:
+                            if int(height) < 50: height_ok = False
+                        except: pass
 
-                        # 필터링 로직
-                        should_include = False
-                        reason = ""
-                        filter_reason = ""
-
-                        # width 체크
-                        width_ok = False
-                        if "width:100%" in style.replace(" ", "") or "width: 100%" in style:
-                            width_ok = True
-                            reason = "width: 100%"
-                        elif width:
-                            try:
-                                width_val = int(width)
-                                if width_val >= 100:
-                                    width_ok = True
-                                    reason = f"w:{width}"
-                                else:
-                                    filter_reason = f"width too small: {width}px"
-                            except:
-                                width_ok = True
-                                reason = f"w:{width}"
-                        else:
-                            width_ok = True
-                            reason = "no width"
-
-                        # height 체크 (무의미한 이미지 필터링)
-                        height_ok = True
-                        if height:
-                            try:
-                                height_val = int(height)
-                                if height_val < 50:
-                                    height_ok = False
-                                    filter_reason = f"height too small: {height}px (divider/spacer)"
-                                else:
-                                    reason += f", h:{height}"
-                            except:
-                                pass
-
-                        # aspect ratio 체크 (극단적인 비율 제외 - 예: 800x4)
-                        aspect_ok = True
-                        if width and height:
-                            try:
-                                width_val = int(width)
-                                height_val = int(height)
-                                if height_val > 0:
-                                    aspect_ratio = width_val / height_val
-                                    if aspect_ratio > 50:
-                                        aspect_ok = False
-                                        filter_reason = f"extreme aspect: {width_val}x{height_val} (ratio:{aspect_ratio:.0f}:1)"
-                            except:
-                                pass
-
-                        should_include = width_ok and height_ok and aspect_ok
-
-                        if should_include or is_apglobal_asset:
-                            image_urls.append(img_url)
-                            seen_urls.add(img_url)
-                            if is_apglobal_asset and not should_include:
-                                print(f"  {idx+1}. [APGLOBAL 포함] {img_url[:80]}... (필터링 규칙 무시)")
-                            else:
-                                print(f"  {idx+1}. {img_url[:80]}... ({reason})")
-                        else:
-                            print(f"  {idx+1}. [필터링 제외] {filter_reason} - {img_url[:80]}...")
+                    if width_ok and height_ok:
+                        image_urls.append(img_url)
+                        seen_urls.add(img_url)
+                        print(f"  {idx+1}. [추가] {img_url[:80]}...")
+                    else:
+                        print(f"  {idx+1}. [필터링] 크기 작음 (w:{width}, h:{height})")
 
                 except Exception as e:
-                    print(f"  ⚠️  {idx+1}번 이미지 추출 실패: {e}")
+                    print(f"  ⚠️  {idx+1}번 이미지 처리 실패: {e}")
                     continue
 
-            print(f"✅ 총 {len(image_urls)}개 이미지 URL 추출 완료 (중복 제거됨)")
-
-            # 디버깅: URL 리스트 저장
-            if image_urls:
-                try:
-                    with open("debug_image_urls.txt", "w", encoding="utf-8") as f:
-                        for i, url in enumerate(image_urls, 1):
-                            f.write(f"{i}. {url}\n")
-                    print("📁 디버깅용 URL 리스트 저장: debug_image_urls.txt")
-                except:
-                    pass
-
-        except Exception as e:
-            print(f"❌ 이미지 추출 중 오류: {e}")
+            print(f"✅ 총 {len(image_urls)}개 이미지 URL 추출 완료 (중복 및 필터링 후)")
 
         finally:
             # implicit wait 원래대로 복구
@@ -500,8 +436,8 @@ class ProductDetailCrawler:
 
     def _calculate_color_similarity(self, img1: Image.Image, img2: Image.Image) -> float:
         """
-        두 이미지의 경계 색상 유사도 계산
-        img1의 마지막 줄과 img2의 첫 줄의 평균 색상을 비교
+        두 이미지의 경계 색상 유사도 계산 (평균 색상 비교)
+        img1의 마지막 2px과 img2의 첫 2px의 평균 색상을 비교
 
         Args:
             img1: 위쪽 이미지
@@ -511,39 +447,67 @@ class ProductDetailCrawler:
             유사도 (0.0 ~ 1.0, 1.0이 완전 동일)
         """
         try:
-            # img1의 마지막 10줄 평균 색상
-            bottom_crop = img1.crop((0, max(0, img1.height - 10), img1.width, img1.height))
+            # img1의 마지막 2줄 평균 색상
+            bottom_crop = img1.crop((0, max(0, img1.height - 2), img1.width, img1.height))
             bottom_color = bottom_crop.resize((1, 1)).getpixel((0, 0))
 
-            # img2의 첫 10줄 평균 색상
-            top_crop = img2.crop((0, 0, img2.width, min(10, img2.height)))
+            # img2의 첫 2줄 평균 색상
+            top_crop = img2.crop((0, 0, img2.width, min(2, img2.height)))
             top_color = top_crop.resize((1, 1)).getpixel((0, 0))
 
-            # RGB 차이 계산 (유클리드 거리)
+            # RGB 차이 계산
             r_diff = abs(bottom_color[0] - top_color[0])
             g_diff = abs(bottom_color[1] - top_color[1])
             b_diff = abs(bottom_color[2] - top_color[2])
-
-            # 평균 차이 (0 ~ 255)
             avg_diff = (r_diff + g_diff + b_diff) / 3
-
-            # 유사도로 변환 (0 ~ 1.0)
             similarity = 1.0 - (avg_diff / 255.0)
-
             return similarity
-
         except Exception as e:
             print(f"    ⚠️ 색상 유사도 계산 실패: {e}")
-            return 0.5  # 실패 시 중간값 반환
+            return 0.5
 
-    def _split_images_by_context(self, images: List[Image.Image], similarity_threshold: float = 0.85) -> List[List[Image.Image]]:
+    def _calculate_histogram_similarity(self, img1: Image.Image, img2: Image.Image) -> float:
         """
-        이미지를 문맥(색상 유사도)에 따라 그룹으로 분할
-        (수정됨: 이제 높이 제한이 있을 때만 분할을 고려)
+        두 이미지의 경계 색상 히스토그램 유사도 계산 (교차 분석)
+        img1의 마지막 2px과 img2의 첫 2px의 히스토그램을 비교
+
+        Args:
+            img1: 위쪽 이미지
+            img2: 아래쪽 이미지
+
+        Returns:
+            유사도 (0.0 ~ 1.0, 1.0이 완전 동일)
+        """
+        try:
+            # 경계 영역 추출 (2px)
+            bottom_crop = img1.crop((0, max(0, img1.height - 2), img1.width, img1.height))
+            top_crop = img2.crop((0, 0, img2.width, min(2, img2.height)))
+
+            # 히스토그램 계산
+            hist1 = bottom_crop.histogram()
+            hist2 = top_crop.histogram()
+
+            # 히스토그램 교차(intersection) 계산
+            intersection = sum(min(h1, h2) for h1, h2 in zip(hist1, hist2))
+
+            # 전체 픽셀 수로 정규화하여 유사도 계산
+            total_pixels = bottom_crop.width * bottom_crop.height
+            if total_pixels == 0: return 1.0
+
+            similarity = intersection / total_pixels
+            return similarity
+        except Exception as e:
+            print(f"    ⚠️ 히스토그램 유사도 계산 실패: {e}")
+            return 0.5
+
+    def _split_images_by_context(self, images: List[Image.Image], mode: str, similarity_threshold: float = 0.95) -> List[List[Image.Image]]:
+        """
+        이미지를 문맥에 따라 그룹으로 분할 (모드 지원)
 
         Args:
             images: 이미지 리스트
-            similarity_threshold: 유사도 임계값 (현재는 로깅용)
+            mode: 분할 모드 ('conservative', 'aggressive')
+            similarity_threshold: 'aggressive' 모드에서 사용할 유사도 임계값
 
         Returns:
             이미지 그룹 리스트
@@ -551,43 +515,51 @@ class ProductDetailCrawler:
         if not images:
             return []
 
-        MAX_HEIGHT = 60000  # Pillow 최대 높이 (안전 마진 포함)
-
+        MAX_HEIGHT = 60000
         groups = []
         current_group = [images[0]]
         current_height = images[0].height
 
-        print(f"\n🎨 이미지 문맥 분석 중... (유사도 임계값: {similarity_threshold:.2f})")
+        print(f"\n🎨 문맥 기반 분할 실행 (모드: {mode})")
+        if mode == 'aggressive':
+            print(f"   (유사도 임계값: {similarity_threshold:.2f})")
 
         for i in range(1, len(images)):
             prev_img = images[i - 1]
             curr_img = images[i]
 
-            # 높이 체크
             would_exceed = (current_height + curr_img.height) > MAX_HEIGHT
+            
+            # 분할 여부 결정
+            should_split = False
+            reason = ""
 
-            # 분할 결정: 높이 초과 여부만으로 판단
-            if not would_exceed:
-                # 높이가 충분하면 현재 그룹에 추가
+            if would_exceed:
+                should_split = True
+                reason = "높이 초과"
+            elif mode == 'aggressive':
+                similarity = self._calculate_histogram_similarity(prev_img, curr_img)
+                if similarity < similarity_threshold:
+                    should_split = True
+                    reason = f"유사도 낮음 ({similarity:.2f})"
+                else:
+                    reason = f"유사도 높음 ({similarity:.2f})"
+
+            if not should_split:
+                # 그룹에 추가
                 current_group.append(curr_img)
                 current_height += curr_img.height
-                
-                # 유사도는 참고용으로만 계산 및 로깅
-                similarity = self._calculate_color_similarity(prev_img, curr_img)
-                print(f"  [{i}/{len(images)-1}] 유사도: {similarity:.2f} → 같은 그룹 (누적 높이: {current_height}px)")
+                if mode == 'aggressive':
+                    print(f"  [{i}/{len(images)-1}] {reason} → 같은 그룹 (누적 높이: {current_height}px)")
+                else: # conservative
+                    print(f"  [{i}/{len(images)-1}] 높이 양호 → 같은 그룹 (누적 높이: {current_height}px)")
             else:
-                # 높이 초과 시 새 그룹 시작
+                # 새 그룹 시작
                 groups.append(current_group)
-                reason = "높이 초과"
-                
-                # 유사도 계산 (로깅용)
-                similarity = self._calculate_color_similarity(prev_img, curr_img)
-                print(f"  [{i}/{len(images)-1}] {reason} (유사도: {similarity:.2f}) → 새 그룹 시작")
-                
+                print(f"  [{i}/{len(images)-1}] {reason} → 새 그룹 시작")
                 current_group = [curr_img]
                 current_height = curr_img.height
 
-        # 마지막 그룹 추가
         if current_group:
             groups.append(current_group)
 
@@ -714,7 +686,7 @@ class ProductDetailCrawler:
             image_urls: 이미지 URL 리스트
             output_path: 저장할 파일 경로 (기본 경로, _part1, _part2 등으로 저장됨)
             progress_callback: 진행 상황을 전달할 콜백 함수 (message, current, total)
-            split_mode: 분할 모드 ("context": 문맥 기반, "tile": 타일 레이아웃)
+            split_mode: 분할 모드 ("conservative", "aggressive", "tile")
             display_resolution: 타일 모드일 때 사용할 해상도 ("1920x1080", "2560x1440", "3840x2160")
 
         Returns:
@@ -786,11 +758,9 @@ class ProductDetailCrawler:
 
         # 분할 모드에 따라 그룹 분할
         if split_mode == "tile":
-            print(f"🖥️ 타일 레이아웃 모드 선택됨 (해상도: {display_resolution})")
             image_groups = self._split_images_by_tile_layout(images, display_resolution)
-        else:
-            print("🎨 문맥 기반 분할 모드 선택됨")
-            image_groups = self._split_images_by_context(images, similarity_threshold=0.85)
+        else: # 'conservative' or 'aggressive'
+            image_groups = self._split_images_by_context(images, mode=split_mode, similarity_threshold=0.95)
 
         # 각 그룹별로 병합
         saved_paths = []

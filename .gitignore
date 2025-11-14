@@ -21,6 +21,7 @@ data/*.csv
 # IDE
 .vscode/
 .idea/
+config/
 *.swp
 *.swo
 
@@ -31,3 +32,4 @@ Thumbs.db
 # Playwright
 playwright-report/
 test-results/
+

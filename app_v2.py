@@ -146,10 +146,14 @@ with st.sidebar:
         st.markdown("#### 🖼️ 이미지 분할 모드")
         split_mode = st.radio(
             "분할 방식",
-            options=["context", "tile"],
+            options=["conservative", "aggressive", "tile"],
             index=0,
-            format_func=lambda x: "🎨 문맥 기반" if x == "context" else "🖥️ 타일 레이아웃 (16:9 비율)",
-            help="문맥 기반: 색상 유사도로 자동 분할 | 타일 레이아웃: 16:9 비율 기준 2열 배치"
+            format_func=lambda x: {
+                "conservative": " 최대한 합치기 (기본)",
+                "aggressive": "🎨 색상 경계로 분할",
+                "tile": "🖥️ 타일 레이아웃"
+            }.get(x, x),
+            help="최대한 합치기: 이미지 최대 높이까지 합침 | 색상 경계로 분할: 디자인이 바뀌면 분할 | 타일 레이아웃: 16:9 비율로 분할"
         )
     else:
         split_mode = "context"  # 기본값
@@ -194,7 +198,6 @@ with st.sidebar:
             with st.expander(f"{len(st.session_state.results)-idx}. {result['상품명'][:20]}..."):
                 st.text(f"⭐ 별점: {result.get('별점', 'N/A')}점")
                 st.text(f"📊 총 리뷰: {result.get('리뷰_총개수', 0)}개")
-                st.text(f"📸 이미지: {result['이미지_개수']}개")
                 if result.get('수집된_리뷰_개수', 0) > 0:
                     st.text(f"📝 수집된 리뷰: {result['수집된_리뷰_개수']}개")
                 if st.button(f"📁 폴더 열기", key=f"open_{idx}"):
@@ -204,10 +207,10 @@ with st.sidebar:
 
 
 # 메인 영역
-tab1, tab2 = st.tabs(["🔍 키워드 검색", "🔗 URL 직접 입력"])
+tab1, tab2 = st.tabs(["🔗 URL 직접 입력", "🔍 키워드 검색"])
 
 # Tab 1: 키워드 검색
-with tab1:
+with tab2:
     st.header("키워드로 상품 검색")
 
     keyword = st.text_input(
@@ -274,8 +277,7 @@ with tab1:
                     product_info = {
                         "상품명": product_name,
                         "리뷰_총개수": review_metadata.get("리뷰_총개수", 0),
-                        "별점": review_metadata.get("별점", 0.0),
-                        "이미지_개수": 0
+                        "별점": review_metadata.get("별점", 0.0)
                     }
                     progress_bar.progress(0.6)
 
@@ -340,7 +342,6 @@ with tab1:
                         "상품명": product_name,
                         "폴더": save_folder,
                         "이미지": product_info.get("이미지_경로", ""),
-                        "이미지_개수": product_info.get("이미지_개수", 0),
                         "별점": product_info.get("별점", 0.0),
                         "리뷰_총개수": product_info.get("리뷰_총개수", 0),
                         "수집된_리뷰_개수": product_info.get("수집된_리뷰_개수", 0)
@@ -351,13 +352,11 @@ with tab1:
                     st.success("🎉 크롤링 완료!")
 
                     # 수집 결과 요약
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2 = st.columns(2)
                     with col1:
                         st.metric("⭐ 별점", f"{product_info.get('별점', 0.0)}점")
                     with col2:
                         st.metric("📊 총 리뷰", f"{product_info.get('리뷰_총개수', 0)}개")
-                    with col3:
-                        st.metric("📸 이미지", f"{product_info.get('이미지_개수', 0)}개")
 
                     if product_info.get('수집된_리뷰_개수', 0) > 0:
                         st.info(f"📝 {product_info['수집된_리뷰_개수']}개의 리뷰를 수집했습니다")
@@ -376,7 +375,7 @@ with tab1:
 
 
 # Tab 2: URL 직접 입력
-with tab2:
+with tab1:
     st.header("상품 URL 직접 입력")
 
     product_url = st.text_input(
@@ -434,8 +433,7 @@ with tab2:
                 product_info = {
                     "상품명": product_name,
                     "리뷰_총개수": review_metadata.get("리뷰_총개수", 0),
-                    "별점": review_metadata.get("별점", 0.0),
-                    "이미지_개수": 0
+                    "별점": review_metadata.get("별점", 0.0)
                 }
                 progress_bar.progress(0.4)
 
@@ -505,7 +503,6 @@ with tab2:
                     "상품명": product_name,
                     "폴더": save_folder,
                     "이미지": product_info.get("이미지_경로", ""),
-                    "이미지_개수": product_info.get("이미지_개수", 0),
                     "별점": product_info.get("별점", 0.0),
                     "리뷰_총개수": product_info.get("리뷰_총개수", 0),
                     "수집된_리뷰_개수": product_info.get("수집된_리뷰_개수", 0)
@@ -516,13 +513,11 @@ with tab2:
                 st.success("🎉 크롤링 완료!")
 
                 # 수집 결과 요약
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 with col1:
                     st.metric("⭐ 별점", f"{product_info.get('별점', 0.0)}점")
                 with col2:
                     st.metric("📊 총 리뷰", f"{product_info.get('리뷰_총개수', 0)}개")
-                with col3:
-                    st.metric("📸 이미지", f"{product_info.get('이미지_개수', 0)}개")
 
                 if product_info.get('수집된_리뷰_개수', 0) > 0:
                     st.info(f"📝 {product_info['수집된_리뷰_개수']}개의 리뷰를 수집했습니다")
@@ -552,7 +547,6 @@ if st.session_state.results:
     with col1:
         st.subheader("📋 상품 정보")
         st.text(f"상품명: {latest_result['상품명']}")
-        st.text(f"이미지 개수: {latest_result['이미지_개수']}개")
 
     with col2:
         st.subheader("📂 저장 위치")

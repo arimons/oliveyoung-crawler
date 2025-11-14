@@ -139,7 +139,7 @@ class ReviewCrawler:
             # 방법 3: JavaScript로 직접 확인
             if current_page is None:
                 try:
-                    current_page = self.driver.execute_script("""
+                    current_page = self.driver.execute_script(r"""
                         const pageing = document.querySelector('div.pageing');
                         if (!pageing) return null;
 
