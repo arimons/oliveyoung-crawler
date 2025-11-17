@@ -529,9 +529,9 @@ class ProductDetailCrawler:
         print(f"  목표 높이 범위: {target_height_16_9}px ~ {target_height_max}px")
         print(f"    (16:9={target_height_16_9}px, 16:10={target_height_16_10}px, +30%={target_height_max}px)")
 
-        # 그룹 생성
+        # 그룹 생성 (원래 순서를 유지하기 위해 인덱스와 함께 저장)
         groups = []
-        current_tile_columns = [[] for _ in range(num_columns)]
+        current_tile_columns = [[] for _ in range(num_columns)]  # 각 원소는 (original_idx, image) 튜플
         column_heights = [0] * num_columns
 
         image_idx = 0
@@ -555,18 +555,22 @@ class ProductDetailCrawler:
             can_add = max_would_be <= target_height_max
 
             if can_add:
-                # 컬럼에 이미지 추가
-                current_tile_columns[min_col_idx].append(img)
+                # 컬럼에 이미지와 원래 인덱스를 함께 추가
+                current_tile_columns[min_col_idx].append((image_idx, img))
                 column_heights[min_col_idx] += img_height
                 print(f"  [{image_idx+1}/{len(images)}] 컬럼{min_col_idx+1}에 추가: {img.width}x{img_height}px (컬럼높이: {column_heights[min_col_idx]}px)")
                 image_idx += 1
             else:
-                # 현재 타일 완성 - 모든 컬럼이 목표 범위 초과
-                flat_group = []
+                # 현재 타일 완성 - 모든 컬럼의 (idx, img)를 모아서 인덱스로 정렬
+                flat_group_with_idx = []
                 for col in current_tile_columns:
-                    flat_group.extend(col)
+                    flat_group_with_idx.extend(col)
 
-                if flat_group:
+                if flat_group_with_idx:
+                    # 원래 인덱스 순서대로 정렬하여 순서 유지
+                    flat_group_with_idx.sort(key=lambda x: x[0])
+                    flat_group = [img for _, img in flat_group_with_idx]
+
                     max_height = max(column_heights)
                     groups.append(flat_group)
                     print(f"  📦 타일 {len(groups)} 완성: {len(flat_group)}개 이미지, 최대높이 {max_height}px")
@@ -578,11 +582,15 @@ class ProductDetailCrawler:
                 column_heights = [0] * num_columns
 
         # 마지막 타일 저장
-        flat_group = []
+        flat_group_with_idx = []
         for col in current_tile_columns:
-            flat_group.extend(col)
+            flat_group_with_idx.extend(col)
 
-        if flat_group:
+        if flat_group_with_idx:
+            # 원래 인덱스 순서대로 정렬하여 순서 유지
+            flat_group_with_idx.sort(key=lambda x: x[0])
+            flat_group = [img for _, img in flat_group_with_idx]
+
             max_height = max(column_heights)
             groups.append(flat_group)
             print(f"  📦 타일 {len(groups)} 완성: {len(flat_group)}개 이미지, 최대높이 {max_height}px")
@@ -789,14 +797,14 @@ class ProductDetailCrawler:
                 num_columns = 2
                 total_width = first_valid_width * num_columns
 
-                # 컬럼별로 이미지 분배 (타일링과 동일한 Best Fit 로직)
-                columns = [[] for _ in range(num_columns)]
+                # 컬럼별로 이미지 분배 (순서 유지를 위해 인덱스와 함께 관리)
+                columns = [[] for _ in range(num_columns)]  # 각 원소는 (original_idx, img) 튜플
                 column_heights = [0] * num_columns
 
-                for img in group:
-                    # 가장 높이가 낮은 컬럼에 추가
+                for idx, img in enumerate(group):
+                    # 가장 높이가 낮은 컬럼에 추가 (인덱스와 함께)
                     min_idx = column_heights.index(min(column_heights))
-                    columns[min_idx].append(img)
+                    columns[min_idx].append((idx, img))
                     column_heights[min_idx] += img.height
 
                 # 최종 캔버스 크기 계산
@@ -810,14 +818,17 @@ class ProductDetailCrawler:
                 # 캔버스 생성
                 merged_image = Image.new('RGB', (total_width, max_column_height), 'white')
 
-                # 컬럼별로 이미지 배치
+                # 컬럼별로 이미지 배치 (각 컬럼 내에서는 원래 순서 유지)
                 current_x = 0
                 for col_idx, column in enumerate(columns):
                     if not column:
                         continue
 
+                    # 컬럼 내에서 원래 순서대로 정렬
+                    column_sorted = sorted(column, key=lambda x: x[0])
+
                     current_y = 0
-                    for img in column:
+                    for _, img in column_sorted:
                         # 왼쪽 정렬
                         merged_image.paste(img, (current_x, current_y))
                         current_y += img.height
