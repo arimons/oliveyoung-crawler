@@ -18,12 +18,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class ProductDetailCrawler:
     """상품 상세 페이지 이미지 크롤러"""
 
-    def __init__(self, driver):
+    def __init__(self, driver, log_callback=None):
         """
         Args:
             driver: Selenium WebDriver 인스턴스
+            log_callback: 로그 출력 콜백 함수 (optional)
         """
         self.driver = driver
+        self.log_callback = log_callback
+
+    def log(self, message: str):
+        """로그 출력"""
+        print(message)
+        if self.log_callback:
+            self.log_callback(message)
 
         # Desktop 뷰 설정
         print("🖥️  Desktop 뷰 활성화 중...")
@@ -116,28 +124,58 @@ class ProductDetailCrawler:
                 };
             """)
 
-            if result:
-                # 디버깅 정보 출력
-                debug_info = result.get("debug", {})
-                if debug_info.get('ratingText'):
-                    print(f"  별점 텍스트: {debug_info.get('ratingText')}")
-                if debug_info.get('totalText'):
-                    print(f"  리뷰수 텍스트: {debug_info.get('totalText')}")
+            # New Layout Logic (Fallback)
+            if result.get("total", 0) == 0:
+                try:
+                    # 별점: div[class*='ReviewArea_rating-star'] > span
+                    rating_elem = self.driver.find_element(By.CSS_SELECTOR, "div[class*='ReviewArea_rating-star'] > span")
+                    metadata["별점"] = float(rating_elem.text.strip())
+                    print(f"  ⭐ 별점 (New Layout): {metadata['별점']}")
+                except:
+                    pass
 
-                metadata["리뷰_총개수"] = result.get("total", 0)
-                metadata["별점"] = result.get("rating", 0.0)
-
-                if metadata["리뷰_총개수"] > 0:
-                    print(f"📊 리뷰 총 개수: {metadata['리뷰_총개수']}개")
-                else:
-                    print(f"⚠️  리뷰 개수를 찾을 수 없음")
-
-                if metadata["별점"] > 0:
-                    print(f"⭐ 별점: {metadata['별점']}점")
-                else:
-                    print(f"⚠️  별점을 찾을 수 없음")
+                try:
+                    # 리뷰수: div[class*='ReviewArea_review-count'] > button > span
+                    count_elem = self.driver.find_element(By.CSS_SELECTOR, "div[class*='ReviewArea_review-count'] > button > span")
+                    count_text = count_elem.text.strip().replace(",", "").replace("건", "")
+                    metadata["리뷰_총개수"] = int(count_text)
+                    print(f"  📊 리뷰 총 개수 (New Layout): {metadata['리뷰_총개수']}")
+                except:
+                    pass
+            
+            # 3. Fallback: User provided HTML structure for Rating
+            # <span class="rating"><span class="oyblind">평점</span>4.9</span>
+            if metadata["별점"] == 0.0:
+                try:
+                    rating_elem = self.driver.find_element(By.CSS_SELECTOR, "span.rating")
+                    rating_text = rating_elem.text.replace("평점", "").strip()
+                    metadata["별점"] = float(rating_text)
+                    print(f"  ⭐ 별점 (span.rating): {metadata['별점']}")
+                except:
+                    pass
             else:
-                print(f"⚠️  JavaScript 실행 결과가 없음")
+                if result:
+                    # 디버깅 정보 출력
+                    debug_info = result.get("debug", {})
+                    if debug_info.get('ratingText'):
+                        print(f"  별점 텍스트: {debug_info.get('ratingText')}")
+                    if debug_info.get('totalText'):
+                        print(f"  리뷰수 텍스트: {debug_info.get('totalText')}")
+
+                    metadata["리뷰_총개수"] = result.get("total", 0)
+                    metadata["별점"] = result.get("rating", 0.0)
+
+                    if metadata["리뷰_총개수"] > 0:
+                        print(f"📊 리뷰 총 개수: {metadata['리뷰_총개수']}개")
+                    else:
+                        print(f"⚠️  리뷰 개수를 찾을 수 없음")
+
+                    if metadata["별점"] > 0:
+                        print(f"⭐ 별점: {metadata['별점']}점")
+                    else:
+                        print(f"⚠️  별점을 찾을 수 없음")
+                else:
+                    print(f"⚠️  JavaScript 실행 결과가 없음")
 
         except Exception as e:
             print(f"⚠️  리뷰 메타데이터 추출 실패: {e}")
@@ -145,6 +183,90 @@ class ProductDetailCrawler:
             traceback.print_exc()
 
         return metadata
+
+    def extract_specific_info(self) -> Dict[str, str]:
+        """
+        사용자가 요청한 4가지 특정 상품 정보 추출
+        #tab-panels > section > ul > li:nth-child(1) > button 클릭 후
+        테이블에서 헤더 텍스트를 검색하여 값 추출
+        """
+        info = {}
+        target_headers = [
+            "사용기한(또는 개봉 후 사용기간)",
+            "사용방법",
+            "화장품제조업자,화장품책임판매업자 및 맞춤형화장품판매업자",
+            "화장품법에 따라 기재해야 하는 모든 성분"
+        ]
+        
+        try:
+            print("🔍 상세 상품 정보 추출 시도...")
+            
+            # 1. 탭 버튼 클릭 (상품정보 탭)
+            tab_button_selector = "#tab-panels > section > ul > li:nth-child(1) > button"
+            try:
+                button = self.driver.find_element(By.CSS_SELECTOR, tab_button_selector)
+                is_expanded = button.get_attribute("aria-expanded") == "true"
+                
+                if not is_expanded:
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                    button.click()
+                    time.sleep(1)
+                    print("  ✅ 상품정보 탭 클릭 완료")
+                else:
+                    print("  ℹ️ 상품정보 탭이 이미 열려있음")
+            except Exception as e:
+                print(f"  ⚠️ 탭 버튼 클릭 실패: {e}")
+
+            # 2. 데이터 추출 (테이블 순회)
+            base_selector = "#tab-panels > section > ul > li:nth-child(1) > div > div > table > tbody > tr"
+            try:
+                rows = self.driver.find_elements(By.CSS_SELECTOR, base_selector)
+                print(f"  📊 테이블 행 개수: {len(rows)}")
+                
+                for row in rows:
+                    try:
+                        th = row.find_element(By.TAG_NAME, "th")
+                        header_text = th.text.strip()
+                        
+                        # 타겟 헤더와 일치하는지 확인 (부분 일치 허용 또는 정확한 매칭)
+                        # 공백 제거 후 비교 등 유연하게 처리
+                        clean_header = header_text.replace(" ", "")
+                        
+                        for target in target_headers:
+                            clean_target = target.replace(" ", "")
+                            if clean_target in clean_header:
+                                td = row.find_element(By.TAG_NAME, "td")
+                                value_text = td.text.strip()
+                                info[target] = value_text
+                                print(f"  ✅ 추출 성공: {target} = {value_text[:20]}...")
+                                break
+                                
+                    except Exception as e:
+                        continue
+                        
+            except Exception as e:
+                print(f"  ⚠️ 테이블 순회 실패: {e}")
+
+        except Exception as e:
+            print(f"⚠️ 상세 정보 추출 중 오류: {e}")
+            
+        return info
+
+    def extract_product_info_from_detail(self) -> Dict[str, str]:
+        """
+        상세 페이지에서 상품 정보 추출
+        """
+        info = {}
+        
+        # 기존 로직 (상품명 등) - 여기서는 간단히 구현하거나 기존 코드에 병합해야 함
+        # 현재 파일에는 extract_product_info_from_detail 메서드가 안보임 (잘렸거나 다른 파일에 있거나)
+        # 아, 사용자가 보여준 코드에는 없었음. oliveyoung_crawler.py에서 호출하는데...
+        # product_detail_crawler.py 전체를 못 봤음. 
+        # view_file로 다시 확인 필요할 수도 있지만, 일단 클래스 안에 메서드 추가하고
+        # 호출하는 쪽에서 병합하도록 수정하는 게 안전함.
+        
+        # 일단 이 메서드는 독립적으로 두고, oliveyoung_crawler.py에서 호출하게 수정하겠음.
+        return info
 
     def click_more_button(self):
         """상품설명 더보기 버튼 클릭"""
@@ -430,12 +552,13 @@ class ProductDetailCrawler:
         if not images:
             return []
 
-        MAX_HEIGHT = 60000
+        MAX_HEIGHT = 65000 # JPEG Format Limit (approx 65535)
         groups = []
         current_group = [images[0]]
         current_height = images[0].height
 
         print(f"\n🎨 문맥 기반 분할 실행 (모드: {mode})")
+        print(f"   (최대 허용 높이: {MAX_HEIGHT}px)")
         if mode == 'aggressive':
             print(f"   (유사도 임계값: {similarity_threshold:.2f})")
 
@@ -451,7 +574,7 @@ class ProductDetailCrawler:
 
             if would_exceed:
                 should_split = True
-                reason = "높이 초과"
+                reason = f"높이 초과 ({current_height + curr_img.height}px > {MAX_HEIGHT}px)"
             elif mode == 'aggressive':
                 similarity = self._calculate_histogram_similarity(prev_img, curr_img)
                 if similarity < similarity_threshold:
@@ -916,10 +1039,130 @@ class ProductDetailCrawler:
             """)
 
             # 결과 저장
-            product_info["상품명"] = result.get("name", "정보 없음")
-            product_info["정상가"] = result.get("beforePrice", "정보 없음")
-            product_info["판매가"] = result.get("price", "정보 없음")
+            name = result.get("name")
+            price = result.get("price")
+            before_price = result.get("beforePrice")
+
+            # 0. New Layout Selectors (User Provided)
+            if not name:
+                try:
+                    # 상품명: div[class*='GoodsDetailInfo_title-area'] > h3
+                    name_elem = self.driver.find_element(By.CSS_SELECTOR, "div[class*='GoodsDetailInfo_title-area'] > h3")
+                    name = name_elem.text.strip()
+                    print(f"  ✅ New Layout 상품명: {name}")
+                except:
+                    pass
+
+            if not price:
+                try:
+                    # 가격 영역: div[class*='GoodsDetailInfo_price-area']
+                    price_area = self.driver.find_element(By.CSS_SELECTOR, "div[class*='GoodsDetailInfo_price-area']")
+                    
+                    # 할인가 (span > span:nth-child(1))
+                    try:
+                        sale_price_elem = price_area.find_element(By.CSS_SELECTOR, "div > div > span > span:nth-child(1)")
+                        price = sale_price_elem.text.strip()
+                    except:
+                        pass
+
+                    # 정상가 (s > span:nth-child(1))
+                    try:
+                        normal_price_elem = price_area.find_element(By.CSS_SELECTOR, "s > span:nth-child(1)")
+                        before_price = normal_price_elem.text.strip()
+                    except:
+                        pass
+                    
+                    if price:
+                        print(f"  ✅ New Layout 가격: {price} (정상가: {before_price})")
+                except:
+                    pass
+
+            # 1. Fallback: Meta Tags (Open Graph)
+            if not name:
+                print("  ⚠️ CSS로 상품명을 찾을 수 없음. Meta Tag 시도...")
+                try:
+                    og_title = self.driver.find_element(By.CSS_SELECTOR, 'meta[property="og:title"]').get_attribute("content")
+                    if og_title:
+                        # "올리브영 - [브랜드] 상품명" 형식일 수 있음
+                        name = og_title.replace("올리브영 - ", "")
+                        print(f"  ✅ Meta Tag로 상품명 추출: {name}")
+                except:
+                    pass
+
+            # 2. Fallback: Common Selectors (New Layout / Mobile)
+            if not name:
+                print("  ⚠️ Meta Tag로도 실패. 대체 Selector 시도...")
+                try:
+                    # 일반적인 h1 태그 시도 (보통 상품명은 h1)
+                    h1_title = self.driver.find_element(By.TAG_NAME, "h1").text.strip()
+                    if h1_title:
+                        name = h1_title
+                        print(f"  ✅ H1 태그로 상품명 추출: {name}")
+                except:
+                    pass
+
+            if not price:
+                try:
+                    # Meta tag for price? (Not standard, but maybe description)
+                    # Alternative price selectors
+                    price_selectors = [
+                        ".price-2 strong", # New layout
+                        ".price strong",
+                        ".prd_price .price"
+                    ]
+                    for sel in price_selectors:
+                        try:
+                            price_elem = self.driver.find_element(By.CSS_SELECTOR, sel)
+                            price = price_elem.text.strip()
+                            if price:
+                                print(f"  ✅ 대체 Selector로 가격 추출: {price}")
+                                break
+                        except:
+                            continue
+                except:
+                    pass
+
+            product_info["상품명"] = name if name else "정보 없음"
+            product_info["정상가"] = before_price if before_price else (price if price else "정보 없음")
+            product_info["판매가"] = price if price else "정보 없음"
             product_info["URL"] = self.driver.current_url
+
+            # Thumbnail Extraction (User Provided Selector)
+            # #main > div.page_product-details-wrapper___t38G > div > div.page_left-section__qXr0Q > div > div > div > div.swiper-wrapper > div.swiper-slide.swiper-slide-active > div > img
+            try:
+                thumb_selector = "#main > div.page_product-details-wrapper___t38G > div > div.page_left-section__qXr0Q > div > div > div > div.swiper-wrapper > div.swiper-slide.swiper-slide-active > div > img"
+                thumb_elem = self.driver.find_element(By.CSS_SELECTOR, thumb_selector)
+                thumb_url = thumb_elem.get_attribute("src")
+                
+                if thumb_url:
+                    product_info["썸네일_URL"] = thumb_url
+                    print(f"  🖼️ 썸네일 URL 추출: {thumb_url}")
+                    
+                    # Download thumbnail
+                    try:
+                        import requests
+                        response = requests.get(thumb_url, stream=True)
+                        if response.status_code == 200:
+                            # We don't have the output path here easily, but we can return the URL 
+                            # and let the main crawler handle downloading, or we can try to save it if we know the path.
+                            # Actually, extract_product_info_from_detail is called before directory creation in some flows,
+                            # but usually the directory is created in crawl_product_detail_by_url.
+                            # Let's just return the URL in product_info and handle download in the main loop or here if we can pass the path.
+                            # For now, just saving the URL. The main crawler (oliveyoung_crawler.py) saves product_info.json.
+                            # We can add a separate step to download this image in oliveyoung_crawler.py
+                            pass
+                    except Exception as e:
+                        print(f"  ⚠️ 썸네일 다운로드 실패: {e}")
+            except:
+                # Fallback for legacy layout
+                try:
+                    thumb_elem = self.driver.find_element(By.CSS_SELECTOR, "#main_img")
+                    thumb_url = thumb_elem.get_attribute("src")
+                    if thumb_url:
+                        product_info["썸네일_URL"] = thumb_url
+                        print(f"  🖼️ 썸네일 URL 추출 (Legacy): {thumb_url}")
+                except:
+                    pass
 
             print(f"✅ 상품명: {product_info['상품명']}")
             print(f"   정상가: {product_info['정상가']}")

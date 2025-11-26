@@ -35,15 +35,21 @@ class OliveyoungCrawler:
         """브라우저 시작"""
         print("🚀 브라우저 시작 중...")
 
-        # 임시 User Data 디렉토리 생성 (Hybrid layout 방지)
-        self.temp_user_data = tempfile.mkdtemp(prefix="chrome_user_data_")
-        print(f"🔧 임시 User Data 디렉토리: {self.temp_user_data}")
+        # 영구 User Data 디렉토리 사용 (Cloudflare 우회용)
+        import os
+        self.temp_user_data = os.path.abspath("chrome_profile")
+        if not os.path.exists(self.temp_user_data):
+            os.makedirs(self.temp_user_data)
+        print(f"🔧 User Data 디렉토리: {self.temp_user_data}")
 
         # Chrome 옵션 설정
         options = webdriver.ChromeOptions()
 
-        # 임시 User Data 디렉토리 사용 (매번 새로운 프로필)
+        # 영구 프로필 사용
         options.add_argument(f'--user-data-dir={self.temp_user_data}')
+        
+        # 시크릿 모드 제거 (쿠키 저장을 위해)
+        # options.add_argument('--incognito')
 
         # 봇 감지 회피 설정
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -87,22 +93,6 @@ class OliveyoungCrawler:
             self.driver.quit()
             print("🛑 브라우저 종료")
         self.driver = None
-
-        # 임시 User Data 디렉토리 정리
-        if self.temp_user_data:
-            try:
-                shutil.rmtree(self.temp_user_data)
-                print(f"🧹 임시 디렉토리 정리 완료")
-            except Exception as e:
-                print(f"⚠️  임시 디렉토리 정리 실패: {e}")
-            self.temp_user_data = None
-
-    def navigate_to_home(self):
-        """올리브영 홈페이지로 이동"""
-        print(f"🌐 {self.base_url} 접속 중...")
-        self.driver.get(self.base_url)
-        time.sleep(2)  # 페이지 로딩 대기
-        print(f"✅ 현재 페이지: {self.driver.title}")
 
     def search_product(self, keyword: str):
         """

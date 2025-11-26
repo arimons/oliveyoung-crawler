@@ -1,4 +1,4 @@
-"""
+﻿"""
 올리브영 리뷰 크롤러
 상품 리뷰를 모든 페이지에서 수집
 """
@@ -13,12 +13,13 @@ import time
 class ReviewCrawler:
     """리뷰 크롤링 클래스"""
 
-    def __init__(self, driver):
+    def __init__(self, driver, log_callback=None):
         """
         Args:
             driver: Selenium WebDriver 인스턴스
         """
         self.driver = driver
+        self.log_callback = log_callback
 
     def click_review_tab(self) -> bool:
         """
@@ -532,3 +533,251 @@ class ReviewCrawler:
 
         except Exception as e:
             print(f"❌ 리뷰 개수 업데이트 실패: {e}")
+
+    def save_review(self, output_path: str, review: dict):
+        """단일 리뷰 저장 (append)"""
+        try:
+            with open(output_path, 'a', encoding='utf-8') as f:
+                f.write(f"[{review.get('날짜', '날짜없음')}]\n")
+                f.write(f"{review.get('내용', '')}\n")
+                f.write("-" * 80 + "\n\n")
+        except Exception as e:
+            print(f"❌ 리뷰 저장 실패: {e}")
+
+    def crawl_reviews_infinite_scroll(self, output_path: str, end_date: str = None) -> int:
+        """무한 스크롤 방식으로 리뷰 수집 (실시간 수집 + 정확한 날짜 필터링)"""
+        total_count = 0
+        
+        try:
+            end_date_obj = None
+            if end_date:
+                try:
+                    end_date_obj = datetime.strptime(end_date, "%Y.%m.%d")
+                    print(f"  📅 종료 날짜: {end_date}")
+                except:
+                    print(f"  ⚠️ 날짜 형식 오류, 전체 수집: {end_date}")
+                    end_date_obj = None
+
+            self.init_review_file(output_path)
+
+            # Cloudflare 체크
+            print("  🔍 페이지 로딩 확인 중...")
+            max_wait = 30
+            wait_count = 0
+            while wait_count < max_wait:
+                try:
+                    if "Cloudflare" in self.driver.page_source:
+                        print(f"  ⏳ Cloudflare 검증 대기 ({wait_count + 1}/{max_wait}초)")
+                        time.sleep(1)
+                        wait_count += 1
+                    else:
+                        print("  ✅ 페이지 로딩 완료")
+                        break
+                except:
+                    time.sleep(1)
+                    wait_count += 1
+            
+            if wait_count >= max_wait:
+                print("  ❌ Cloudflare 검증 시간 초과")
+                return 0
+
+            # 리뷰 탭 클릭
+            print("  🎯 리뷰 탭 탐색 중...")
+            try:
+                review_tab = None
+                try:
+                    active_tab = self.driver.find_element(By.CSS_SELECTOR, "button.GoodsDetailTabs_is-activated__FuIfl")
+                    if "리뷰" in active_tab.text:
+                        print("  ✅ 리뷰 탭이 이미 활성화되어 있습니다.")
+                        review_tab = active_tab
+                except:
+                    pass
+
+                if not review_tab:
+                    for selector in ["//button[contains(., '리뷰&셔터')]", "//button[contains(., '리뷰')]"]:
+                        try:
+                            tab = self.driver.find_element(By.XPATH, selector)
+                            if tab and "리뷰" in tab.text:
+                                review_tab = tab
+                                print(f"  🎯 리뷰 탭 발견")
+                                break
+                        except:
+                            continue
+                
+                if review_tab:
+                    if "GoodsDetailTabs_is-activated" not in review_tab.get_attribute("class"):
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", review_tab)
+                        time.sleep(0.5)
+                        self.driver.execute_script("arguments[0].click();", review_tab)
+                        print("  ✅ 리뷰 탭 클릭 완료")
+                        time.sleep(2)
+                else:
+                    print("❌ 리뷰 탭 없음")
+                    return 0
+            except Exception as e:
+                print(f"⚠️ 리뷰 탭 클릭 실패: {e}")
+                return 0
+
+            # 정렬 변경 (최신순)
+            print("  🔍 최신순 버튼 탐색 중...")
+            
+            find_sort_js = """
+            function findElementRecursive(root, tagName) {
+                if (!root) return null;
+                let found = root.querySelector(tagName);
+                if (found) return found;
+                let walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null, false);
+                while(walker.nextNode()) {
+                    let node = walker.currentNode;
+                    if (node.shadowRoot) {
+                        let result = findElementRecursive(node.shadowRoot, tagName);
+                        if (result) return result;
+                    }
+                }
+                return null;
+            }
+            return findElementRecursive(document, 'oy-review-review-sort');
+            """
+            
+            try:
+                shadow_host = self.driver.execute_script(find_sort_js)
+                if not shadow_host:
+                    print("  ❌ 정렬 버튼 호스트를 찾을 수 없습니다.")
+                    return 0
+                
+                shadow_root = self.driver.execute_script("return arguments[0].shadowRoot", shadow_host)
+                if not shadow_root:
+                    print("  ❌ Shadow Root를 가져올 수 없습니다.")
+                    return 0
+                    
+                buttons = shadow_root.find_elements(By.CSS_SELECTOR, "button[class*='pc-sort-button']")
+                
+                sort_clicked = False
+                for btn in buttons:
+                    try:
+                        btn_text = btn.text.strip()
+                        if "최신순" in btn_text:
+                            self.driver.execute_script("arguments[0].click();", btn)
+                            print("  ✅ '최신순' 클릭 완료")
+                            time.sleep(1)
+                            sort_clicked = True
+                            break
+                    except:
+                        continue
+                
+                if not sort_clicked:
+                    print("  ❌ '최신순' 버튼을 찾을 수 없습니다")
+                    return 0
+
+            except Exception as e:
+                print(f"  ❌ 정렬 버튼 로직 오류: {e}")
+                return 0
+
+            # 무한 스크롤 + 실시간 수집
+            try:
+                last_height = self.driver.execute_script("return document.body.scrollHeight")
+            except:
+                print("  ❌ 브라우저 세션 오류")
+                return 0
+                
+            scroll_count = 0
+            max_scrolls = 100
+            last_date_str = "알 수 없음"
+            
+            find_reviews_js = """
+            function findAllElementsRecursive(root, tagName) {
+                let results = [];
+                if (!root) return results;
+                let found = root.querySelectorAll(tagName);
+                if (found.length > 0) {
+                    results.push(...found);
+                }
+                let walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null, false);
+                while(walker.nextNode()) {
+                    let node = walker.currentNode;
+                    if (node.shadowRoot) {
+                        let childResults = findAllElementsRecursive(node.shadowRoot, tagName);
+                        results.push(...childResults);
+                    }
+                }
+                return results;
+            }
+            return findAllElementsRecursive(document, 'oy-review-review-item');
+            """
+
+            collected_reviews = set()
+            
+            while scroll_count < max_scrolls:
+                try:
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(0.5)
+                    
+                    try:
+                        items = self.driver.execute_script(find_reviews_js)
+                        
+                        if items:
+                            for item in items:
+                                try:
+                                    shadow = self.driver.execute_script("return arguments[0].shadowRoot", item)
+                                    date_elem = shadow.find_element(By.CSS_SELECTOR, "span.date")
+                                    review_date = date_elem.text.strip()
+                                    
+                                    if end_date_obj:
+                                        try:
+                                            date_obj = datetime.strptime(review_date, "%Y.%m.%d")
+                                            if date_obj < end_date_obj:
+                                                print(f"  🛑 종료 날짜 도달 ({review_date}), 수집 중단")
+                                                print(f"✅ 총 {total_count}개 리뷰 수집 완료")
+                                                self.update_review_count(output_path, total_count)
+                                                return total_count
+                                        except:
+                                            pass
+
+                                    try:
+                                        content_elem = shadow.find_element(By.CSS_SELECTOR, "oy-review-review-content")
+                                        content_shadow = self.driver.execute_script("return arguments[0].shadowRoot", content_elem)
+                                        text_elem = content_shadow.find_element(By.CSS_SELECTOR, "p")
+                                        review_text = text_elem.text.strip()
+                                    except:
+                                        try:
+                                            review_text = shadow.find_element(By.CSS_SELECTOR, ".review_cont").text.strip()
+                                        except:
+                                            review_text = "내용 추출 실패"
+
+                                    review_key = f"{review_date}_{review_text[:20]}"
+                                    if review_key not in collected_reviews:
+                                        self.save_review(output_path, {"날짜": review_date, "내용": review_text})
+                                        collected_reviews.add(review_key)
+                                        total_count += 1
+                                        if total_count % 10 == 0:
+                                            print(f"  💾 {total_count}개 수집 중... (현재: {review_date})")
+                                            
+                                    last_date_str = review_date
+
+                                except:
+                                    continue
+                    except:
+                        pass
+
+                    new_height = self.driver.execute_script("return document.body.scrollHeight")
+                    if new_height == last_height:
+                        print(f"  ✅ 스크롤 완료 (마지막: {last_date_str})")
+                        break
+                    last_height = new_height
+                    scroll_count += 1
+                    
+                except Exception as e:
+                    if "session" in str(e).lower():
+                        break
+                    time.sleep(1)
+                    continue
+            
+            print(f"✅ 총 {total_count}개 리뷰 수집 완료")
+            self.update_review_count(output_path, total_count)
+            
+        except Exception as e:
+            print(f"❌ 크롤링 오류: {e}")
+            if total_count > 0:
+                self.update_review_count(output_path, total_count)
+        
+        return total_count

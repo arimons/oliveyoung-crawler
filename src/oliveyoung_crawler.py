@@ -22,20 +22,28 @@ import time
 class OliveyoungIntegratedCrawler:
     """올리브영 통합 크롤러"""
 
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = True, log_callback=None):
         """
         Args:
             headless: 브라우저 백그라운드 실행 여부
+            log_callback: 로그 출력 콜백 함수 (optional)
         """
         self.base_crawler = OliveyoungCrawler(headless=headless)
         self.detail_crawler = None
         self.review_crawler = None
+        self.log_callback = log_callback
+
+    def log(self, message: str):
+        """로그 출력"""
+        print(message)
+        if self.log_callback:
+            self.log_callback(message)
 
     def start(self):
         """크롤러 시작"""
         self.base_crawler.start()
-        self.detail_crawler = ProductDetailCrawler(self.base_crawler.driver)
-        self.review_crawler = ReviewCrawler(self.base_crawler.driver)
+        self.detail_crawler = ProductDetailCrawler(self.base_crawler.driver, log_callback=self.log_callback)
+        self.review_crawler = ReviewCrawler(self.base_crawler.driver, log_callback=self.log_callback)
 
     def stop(self):
         """크롤러 종료"""
@@ -91,13 +99,17 @@ class OliveyoungIntegratedCrawler:
 
         return products[0]
 
-    def crawl_product_detail_by_url(self, product_url: str, save_folder: str) -> Dict:
+    def crawl_product_detail_by_url(self, product_url: str, save_folder: str, split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False) -> Dict:
         """
         URL로 상품 상세 정보 크롤링
 
         Args:
             product_url: 상품 URL
             save_folder: 저장 폴더 경로
+            split_mode: 이미지 분할 모드 (conservative, aggressive, tile)
+            collect_reviews: 리뷰 수집 여부
+            review_end_date: 리뷰 수집 종료 날짜 (YYYY.MM.DD)
+            reviews_only: 리뷰만 수집 (이미지 건너뛰기)
 
         Returns:
             상품 정보 및 이미지 경로
@@ -112,35 +124,92 @@ class OliveyoungIntegratedCrawler:
         # 상품 정보 추출
         product_info = self.detail_crawler.extract_product_info_from_detail()
 
-        # 더보기 버튼 클릭
-        self.detail_crawler.click_more_button()
+        # 이미지 수집 (reviews_only가 False일 때만)
+        if not reviews_only:
+            # 더보기 버튼 클릭
+            self.detail_crawler.click_more_button()
 
-        # 이미지 URL 추출
-        image_urls = self.detail_crawler.extract_product_images()
+            # 이미지 URL 추출
+            image_urls = self.detail_crawler.extract_product_images()
 
-        if not image_urls:
-            print("⚠️  추출된 이미지가 없습니다")
+            if not image_urls:
+                print("⚠️  추출된 이미지가 없습니다")
+                product_info["이미지_경로"] = ""
+                product_info["이미지_개수"] = 0
+            else:
+                # 이미지 다운로드 및 병합
+                output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
+                self.detail_crawler.download_and_merge_images(image_urls, output_image_path, split_mode=split_mode)
+
+                # 썸네일 다운로드
+                if product_info.get("썸네일_URL"):
+                    try:
+                        import requests
+                        thumb_url = product_info["썸네일_URL"]
+                        thumb_path = os.path.join(save_folder, "thumbnail.jpg")
+                        
+                        response = requests.get(thumb_url, stream=True)
+                        if response.status_code == 200:
+                            with open(thumb_path, 'wb') as f:
+                                for chunk in response.iter_content(1024):
+                                    f.write(chunk)
+                            print(f"  🖼️ 썸네일 다운로드 완료: {thumb_path}")
+                            product_info["썸네일_경로"] = thumb_path
+                        else:
+                            print(f"  ⚠️ 썸네일 다운로드 실패 (Status: {response.status_code})")
+                    except Exception as e:
+                        print(f"  ⚠️ 썸네일 다운로드 중 오류: {e}")
+        else:
+            print("📝 리뷰만 수집 모드: 이미지 수집 건너뛰기")
             product_info["이미지_경로"] = ""
             product_info["이미지_개수"] = 0
-            return product_info
 
-        # 이미지 다운로드 및 병합
-        output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
-        saved_path = self.detail_crawler.download_and_merge_images(image_urls, output_image_path)
-
-        product_info["이미지_경로"] = saved_path
-        product_info["이미지_개수"] = len(image_urls)
         product_info["수집시각"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 리뷰 메타데이터 (별점, 리뷰수) 추출
+        review_meta = self.detail_crawler.extract_review_metadata()
+        if review_meta:
+            product_info.update(review_meta)
+
+        # 추가 정보 추출 (사용자 요청: 상품정보 탭의 특정 행)
+        specific_info = self.detail_crawler.extract_specific_info()
+        if specific_info:
+            product_info.update(specific_info)
+
+        # 리뷰 텍스트 수집 (옵션)
+        if collect_reviews:
+            print(f"📝 리뷰 텍스트 수집 중... (종료일: {review_end_date})")
+            review_file = os.path.join(save_folder, "reviews.txt")
+            
+            # New Layout (Infinite Scroll) 시도
+            try:
+                review_count = self.review_crawler.crawl_reviews_infinite_scroll(
+                    output_path=review_file,
+                    end_date=review_end_date
+                )
+            except Exception as e:
+                print(f"⚠️ 무한 스크롤 수집 실패, 기존 방식 시도: {e}")
+                review_count = self.review_crawler.crawl_all_reviews(
+                    output_path=review_file,
+                    end_date=review_end_date
+                )
+                
+            product_info["수집된_리뷰_개수"] = review_count
+
 
         return product_info
 
-    def crawl_product_by_keyword(self, keyword: str, save_format: str = "json") -> Dict:
+    def crawl_product_by_keyword(self, keyword: str, save_format: str = "json", split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False) -> Dict:
         """
         키워드로 상품 검색 및 크롤링
 
         Args:
             keyword: 검색 키워드
             save_format: 저장 형식 (json/csv/both)
+            split_mode: 이미지 분할 모드
+            collect_reviews: 리뷰 수집 여부
+            review_end_date: 리뷰 수집 종료 날짜
+            reviews_only: 리뷰만 수집 (이미지 건너뛰기)
 
         Returns:
             크롤링 결과 딕셔너리
@@ -154,11 +223,15 @@ class OliveyoungIntegratedCrawler:
         product_url = first_product["URL"]
 
         # 폴더 생성
-        product_name = first_product["상품명"].split('\n')[0][:50]  # 상품명 앞부분만 사용
+        product_name = first_product.get("상품명", "Unknown")
+        if product_name:
+            product_name = product_name.split('\n')[0][:50]  # 상품명 앞부분만 사용
+        else:
+            product_name = "Unknown"
         save_folder = self.create_product_folder(product_name)
 
         # 상세 크롤링
-        product_info = self.crawl_product_detail_by_url(product_url, save_folder)
+        product_info = self.crawl_product_detail_by_url(product_url, save_folder, split_mode=split_mode, collect_reviews=collect_reviews, review_end_date=review_end_date, reviews_only=reviews_only)
 
         # 데이터 저장
         self.save_product_info(product_info, save_folder, save_format)
@@ -172,7 +245,7 @@ class OliveyoungIntegratedCrawler:
 
         return result
 
-    def crawl_product_by_url(self, product_url: str, product_name: str = None, save_format: str = "json") -> Dict:
+    def crawl_product_by_url(self, product_url: str, product_name: str = None, save_format: str = "json", split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False) -> Dict:
         """
         URL로 상품 크롤링
 
@@ -180,6 +253,10 @@ class OliveyoungIntegratedCrawler:
             product_url: 상품 URL
             product_name: 상품명 (폴더명 생성용, None이면 자동 추출)
             save_format: 저장 형식 (json/csv/both)
+            split_mode: 이미지 분할 모드
+            collect_reviews: 리뷰 수집 여부
+            review_end_date: 리뷰 수집 종료 날짜
+            reviews_only: 리뷰만 수집 (이미지 건너뛰기)
 
         Returns:
             크롤링 결과 딕셔너리
@@ -191,15 +268,16 @@ class OliveyoungIntegratedCrawler:
         # 폴더 생성 (임시 이름)
         if not product_name:
             product_name = f"product_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            print(f"ℹ️ 상품명을 찾기 전까지 임시 폴더에 저장합니다: {product_name}")
 
         save_folder = self.create_product_folder(product_name)
 
         # 상세 크롤링
-        product_info = self.crawl_product_detail_by_url(product_url, save_folder)
+        product_info = self.crawl_product_detail_by_url(product_url, save_folder, split_mode=split_mode, collect_reviews=collect_reviews, review_end_date=review_end_date, reviews_only=reviews_only)
 
         # 실제 상품명으로 폴더 이름 변경
         if product_info.get("상품명") and product_info["상품명"] != "정보 없음":
-            actual_name = product_info["상품명"].split('\n')[0][:50]
+            actual_name = (product_info["상품명"] or "Unknown").split('\n')[0][:50]
             new_folder = self.create_product_folder(actual_name)
 
             # 파일 이동
@@ -213,6 +291,10 @@ class OliveyoungIntegratedCrawler:
                 os.rmdir(save_folder)
                 save_folder = new_folder
                 product_info["이미지_경로"] = os.path.join(new_folder, "product_detail_merged.jpg")
+                
+                # 리뷰 파일 경로도 업데이트
+                if collect_reviews:
+                    product_info["리뷰_파일_경로"] = os.path.join(new_folder, "reviews.txt")
 
         # 데이터 저장
         self.save_product_info(product_info, save_folder, save_format)
