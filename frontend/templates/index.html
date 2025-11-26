@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Olive Young Crawler Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Pretendard:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <i class="fa-solid fa-leaf logo-icon"></i>
+                <h1>Olive Crawler</h1>
+            </div>
+            
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-pie"></i> 대시보드
+                </button>
+                <button class="nav-item" data-tab="history">
+                    <i class="fa-solid fa-clock-rotate-left"></i> 히스토리
+                </button>
+            </nav>
+
+            <div class="status-card">
+                <h3>시스템 상태</h3>
+                <div class="status-indicator">
+                    <span class="dot" id="system-status-dot"></span>
+                    <span id="system-status-text">대기 중</span>
+                </div>
+            </div>
+
+            <!-- Common Settings in Sidebar -->
+            <div class="settings-card">
+                <h3>공통 설정</h3>
+                <div class="setting-item">
+                    <label>저장 형식</label>
+                    <select id="common-save-format">
+                        <option value="both">JSON + CSV</option>
+                        <option value="json">JSON Only</option>
+                        <option value="csv">CSV Only</option>
+                    </select>
+                </div>
+                <div class="setting-item">
+                    <label>이미지 병합 모드</label>
+                    <select id="common-split-mode">
+                        <option value="aggressive">색상 경계로 분할 (기본)</option>
+                        <option value="conservative">최대한 합치기</option>
+                        <option value="tile">타일 레이아웃</option>
+                    </select>
+                </div>
+                <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:1rem;">
+                    <input type="checkbox" id="common-collect-reviews" style="width:auto;" onchange="toggleCommonReviewDate()">
+                    <label for="common-collect-reviews" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰 텍스트 수집</label>
+                </div>
+                <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+                    <input type="checkbox" id="common-reviews-only" style="width:auto;">
+                    <label for="common-reviews-only" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰만 수집 (이미지 건너뛰기)</label>
+                </div>
+                <div class="setting-item hidden" id="common-review-date-container">
+                    <label style="font-size:0.85rem;">리뷰 수집 종료일</label>
+                    <input type="date" id="common-review-end-date" style="font-size:0.85rem;">
+                </div>
+            </div>
+
+            <!-- System Controls -->
+            <div class="settings-card" style="margin-top: 1rem;">
+                <h3>시스템 제어</h3>
+                <div class="setting-item">
+                    <button class="btn-danger" onclick="stopCrawl()" style="width:100%; margin-bottom:0.5rem;">
+                        <i class="fa-solid fa-stop"></i> 강제 작업 중지
+                    </button>
+                    <button class="btn-secondary" onclick="openDataFolder()" style="width:100%;">
+                        <i class="fa-solid fa-folder-open"></i> 데이터 폴더 열기
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Tab -->
+            <div id="dashboard-tab" class="tab-content active">
+                <header class="top-bar">
+                    <h2>새로운 추출 작업</h2>
+                    <div class="user-profile">
+                        <span>관리자</span>
+                        <div class="avatar">A</div>
+                    </div>
+                </header>
+
+                <div class="input-section">
+                    <div class="tabs-input">
+                        <button class="tab-btn" onclick="switchInputMode('keyword')">키워드 검색</button>
+                        <button class="tab-btn active" onclick="switchInputMode('url')">URL 직접 입력</button>
+                    </div>
+
+                    <div class="card input-card">
+                        <!-- Keyword Form -->
+                        <div id="keyword-form" class="form-group hidden">
+                            <label>검색 키워드</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="keyword-input" placeholder="예: 선크림, 라네즈...">
+                            </div>
+                            
+                            <div class="options-grid">
+                                <div class="option-item">
+                                    <label>최대 상품 수</label>
+                                    <input type="number" id="max-products" value="5" min="1" max="50">
+                                </div>
+                            </div>
+
+                            <button class="btn-primary" onclick="startKeywordCrawl()">
+                                <i class="fa-solid fa-rocket"></i> 추출 시작
+                            </button>
+                        </div>
+
+                        <!-- URL Form -->
+                        <div id="url-form" class="form-group">
+                            <label>상품 URL</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-link"></i>
+                                <input type="text" id="url-input" placeholder="https://www.oliveyoung.co.kr/...">
+                            </div>
+                            
+                            <div class="option-item">
+                                <label>상품명 (선택사항)</label>
+                                <input type="text" id="product-name-input" placeholder="비워두면 자동 감지">
+                            </div>
+
+                            <button class="btn-primary" onclick="startUrlCrawl()">
+                                <i class="fa-solid fa-bolt"></i> 상세 정보 추출
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Status -->
+                <div class="live-status-section hidden" id="live-status">
+                    <h3><i class="fa-solid fa-tower-broadcast"></i> 실시간 진행 상황</h3>
+                    <div class="card status-detail-card">
+                        <div class="progress-header">
+                            <span id="current-action">초기화 중...</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="progress-bar"></div>
+                        </div>
+                        <div class="log-window" id="log-window">
+                            <!-- Logs will appear here -->
+                        </div>
+                        <button class="btn-danger" onclick="stopCrawl()">작업 중지</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="history-tab" class="tab-content">
+                <header class="top-bar">
+                    <h2>추출 히스토리</h2>
+                    <button class="btn-secondary" onclick="loadHistory()">
+                        <i class="fa-solid fa-rotate"></i> 새로고침
+                    </button>
+                </header>
+
+                <div class="history-grid" id="history-grid">
+                    <!-- History items will be injected here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
