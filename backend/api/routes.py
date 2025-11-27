@@ -8,9 +8,18 @@ import platform
 
 router = APIRouter()
 
+def get_data_dir():
+    """프로젝트 루트의 DATA 폴더 경로를 반환"""
+    # 현재 파일의 절대 경로에서 프로젝트 루트 찾기
+    current_file = os.path.abspath(__file__)
+    # backend/api/routes.py -> backend/api -> backend -> project_root
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    data_dir = os.path.join(project_root, "data")
+    return data_dir
+
 @router.get("/image/{folder_name}")
 async def get_image(folder_name: str):
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_data_dir()
     folder_path = os.path.join(data_dir, folder_name)
     
     # Try thumbnail first
@@ -76,7 +85,7 @@ async def stop_crawler():
 @router.get("/results")
 async def list_results():
     # List folders in 'data' directory
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_data_dir()
     if not os.path.exists(data_dir):
         return []
     
@@ -110,12 +119,12 @@ async def list_results():
 
 @router.post("/open-folder/{folder_name}")
 async def open_folder(folder_name: str):
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_data_dir()
     folder_path = os.path.join(data_dir, folder_name)
-    
+
     if not os.path.exists(folder_path):
         raise HTTPException(status_code=404, detail="Folder not found")
-        
+
     try:
         system = platform.system()
         if system == "Darwin":  # macOS
@@ -125,5 +134,26 @@ async def open_folder(folder_name: str):
         elif system == "Linux":
             subprocess.run(["xdg-open", folder_path])
         return {"message": "Folder opened"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/open-data-dir")
+async def open_data_dir():
+    """데이터 폴더를 시스템 탐색기로 열기"""
+    data_dir = get_data_dir()
+
+    # 폴더가 없으면 생성
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir, exist_ok=True)
+
+    try:
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            subprocess.run(["open", data_dir])
+        elif system == "Windows":
+            subprocess.run(["explorer", data_dir])
+        elif system == "Linux":
+            subprocess.run(["xdg-open", data_dir])
+        return {"message": "Data folder opened"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
