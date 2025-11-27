@@ -57,7 +57,16 @@ class OliveyoungCrawler:
         options.add_experimental_option('useAutomationExtension', False)
 
         if self.headless:
-            options.add_argument('--headless')
+            # 최신 헤드리스 모드 사용
+            options.add_argument('--headless=new')
+        else:
+            # 헤드리스가 아닐 때: 화면 구석으로 이동 (사용자가 필요시 접근 가능)
+            options.add_argument('--window-position=1850,1000')
+        
+        # 뷰포트 크기 고정 (헤드리스에서도 적용됨)
+        options.add_argument('--window-size=1920,1080')
+        # options.add_argument('--start-maximized') # 위치 이동을 위해 최대화 해제
+        
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
