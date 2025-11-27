@@ -69,7 +69,11 @@ class OliveyoungIntegratedCrawler:
         date_str = datetime.now().strftime("%y%m%d")
         folder_name = f"{date_str}_{safe_name}"
 
-        folder_path = os.path.join("data", folder_name)
+        # 프로젝트 루트 기준 절대 경로 설정
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.path.join(project_root, "data")
+        
+        folder_path = os.path.join(data_dir, folder_name)
         os.makedirs(folder_path, exist_ok=True)
 
         print(f"📁 폴더 생성: {folder_path}")
