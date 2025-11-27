@@ -1,201 +1,176 @@
-# 🛒 올리브영 상품 크롤러
+# 🛒 올리브영 크롤러 v4.0
 
-올리브영 온라인몰에서 상품 정보를 검색하고 수집하는 Python 크롤러입니다.
+올리브영 온라인몰에서 상품 정보와 리뷰를 수집하는 Python 크롤러입니다.
 
-## 📋 기능
+## ✨ 주요 기능
 
-- ✅ 상품명으로 검색
-- ✅ 상품 정보 자동 수집 (상품명, 브랜드, 가격, URL)
-- ✅ JSON/CSV 형식으로 데이터 저장
-- ✅ 브라우저 표시/숨김 모드 지원
-- ✅ 사용자 친화적인 대화형 인터페이스
+- ✅ **상품 정보 수집**: 상품명, 브랜드, 가격, 이미지 등
+- ✅ **리뷰 수집**: Shadow DOM 지원으로 안정적인 리뷰 크롤링
+- ✅ **실시간 수집**: 가상 스크롤 대응, 최신 리뷰 누락 방지
+- ✅ **정확한 날짜 필터링**: 원하는 기간의 리뷰만 수집
+- ✅ **Web UI**: 브라우저에서 편리하게 사용
+- ✅ **CLI 모드**: 터미널에서 빠른 실행
 
-## 🚀 설치 방법
+## 🚀 빠른 시작 (Windows)
 
-### 1. 필수 요구사항
+### 방법 1: 자동 설치 (권장)
 
-- Python 3.10 이상
-- Chrome 브라우저
+1. `install.bat` 다운로드 및 실행
+   - 자동으로 Git clone, 가상환경 생성, 패키지 설치
+   - 바탕화면에 바로가기 생성
 
-### 2. 가상환경 생성 및 활성화
+2. 바탕화면의 "Olive Young Crawler" 실행
+   - 브라우저에서 `http://localhost:8000` 자동 접속
 
-```bash
-# 가상환경 생성 (Python 3.10 사용 권장)
-python3.10 -m venv venv
-
-# 가상환경 활성화
-source venv/bin/activate  # Mac/Linux
-# 또는
-venv\Scripts\activate  # Windows
-```
-
-### 3. 패키지 설치
+### 방법 2: 수동 설치
 
 ```bash
-pip install -r requirements.txt
+# 1. 저장소 클론
+git clone https://github.com/arimons/oliveyoung-crawler.git
+cd oliveyoung-crawler
+
+# 2. 가상환경 생성 및 활성화
+python -m venv venv
+venv\Scripts\activate
+
+# 3. 패키지 설치 (uv 사용 권장)
+pip install uv
+uv pip install -r requirements.txt
+
+# 4. 서버 실행
+python run_server.py
 ```
 
 ## 💻 사용 방법
 
-### 기본 사용법
+### Web UI 모드 (권장)
 
 ```bash
-# 가상환경 활성화
-source venv/bin/activate
+# start_server.bat 실행 또는
+python run_server.py
+```
 
-# 메인 스크립트 실행
+브라우저에서 `http://localhost:8000` 접속하여 사용
+
+### CLI 모드
+
+```bash
 python main.py
 ```
 
-실행하면 다음 질문들이 나옵니다:
-1. 검색할 상품명
-2. 추출할 상품 개수
-3. 브라우저 표시 여부
-4. 저장 형식 (JSON/CSV/Both)
-
-### 예시
-
-```
-🔍 검색할 상품명을 입력하세요: 토너
-📊 추출할 상품 개수를 입력하세요 (기본값: 10): 5
-👀 브라우저를 화면에 표시할까요? (y/n, 기본값: n): n
-💾 저장 형식을 선택하세요 (json/csv/both, 기본값: both): both
-```
+대화형으로 검색어, 상품 개수, 저장 형식 등을 입력
 
 ## 📁 프로젝트 구조
 
 ```
-Oliveyoung/
-├── venv/                    # 가상환경 (설치 후 생성됨)
-├── src/
-│   ├── __init__.py
-│   └── crawler_selenium.py  # 크롤러 핵심 코드
-├── data/                    # 수집된 데이터 저장 폴더
-│   ├── .gitkeep
-│   └── (크롤링 결과 파일들)
-├── main.py                  # 메인 실행 스크립트
-├── requirements.txt         # 필요한 패키지 목록
-├── .gitignore
-└── README.md
+oliveyoung-crawler/
+├── backend/                 # FastAPI 백엔드
+│   ├── api/                # API 라우트
+│   ├── models/             # 데이터 모델
+│   └── services/           # 크롤러 서비스
+├── frontend/               # Web UI
+│   ├── static/            # CSS, JS
+│   └── templates/         # HTML
+├── src/                    # 크롤러 핵심 로직
+│   ├── crawler_selenium.py
+│   ├── oliveyoung_crawler.py
+│   ├── review_crawler.py
+│   └── product_detail_crawler.py
+├── data/                   # 수집 데이터 저장
+├── chrome_profile/         # Chrome 프로필 (Cloudflare 우회)
+├── main.py                 # CLI 진입점
+├── run_server.py          # Web UI 진입점
+├── start_server.bat       # 서버 실행 스크립트
+└── requirements.txt       # 패키지 목록
 ```
 
-## 📊 출력 데이터 형식
+## 🔧 v4.0 주요 개선사항
 
-### JSON 형식
+### 1. Shadow DOM 지원
+- JavaScript 재귀 탐색으로 깊은 Shadow DOM 내 요소 탐지
+- 정렬 버튼, 리뷰 아이템 안정적 접근
+
+### 2. 실시간 리뷰 수집
+- 스크롤 중 즉시 수집하여 가상 스크롤 대응
+- 초기 리뷰 누락 문제 해결
+
+### 3. 정확한 날짜 필터링
+- `end_date` 도달 시 즉시 중단
+- 불필요한 오래된 데이터 수집 방지
+
+### 4. 중복 방지
+- Set 기반 중복 체크
+- 동일 리뷰 재수집 방지
+
+## 📊 출력 데이터
+
+### 상품 정보 (JSON)
 ```json
-[
-  {
-    "순번": 1,
-    "상품명": "라네즈 크림스킨 토너",
-    "브랜드": "라네즈",
-    "가격": "33,000원 26,400원",
-    "URL": "https://www.oliveyoung.co.kr/store/goods/...",
-    "수집시각": "2025-11-12 12:54:41"
-  }
-]
+{
+  "상품명": "라네즈 크림스킨 토너",
+  "브랜드": "라네즈",
+  "가격": "26,400원",
+  "URL": "https://www.oliveyoung.co.kr/...",
+  "수집시각": "2025-11-27 13:30:00"
+}
 ```
 
-### CSV 형식
-| 순번 | 상품명 | 브랜드 | 가격 | URL | 수집시각 |
-|-----|-------|-------|-----|-----|---------|
-| 1 | 라네즈 크림스킨 토너 | 라네즈 | 33,000원 26,400원 | https://... | 2025-11-12 12:54:41 |
-
-## 🔧 테스트 스크립트
-
-프로젝트에는 여러 테스트 스크립트가 포함되어 있습니다:
-
-```bash
-# 기본 접속 테스트
-python test_selenium.py
-
-# 검색 기능 테스트
-python test_search.py
-
-# 상품 추출 테스트
-python test_extract.py
-
-# 전체 프로세스 테스트
-python test_full_process.py
+### 리뷰 (TXT)
 ```
+[2025.11.26]
+정말 좋아요! 피부가 촉촉해졌어요.
+--------------------------------------------------------------------------------
+
+[2025.11.25]
+재구매 의사 있습니다.
+--------------------------------------------------------------------------------
+```
+
+## ⚙️ 필수 요구사항
+
+- **Python**: 3.8 이상
+- **Chrome**: 최신 버전
+- **OS**: Windows (배치 파일), Mac/Linux (수동 설치)
 
 ## ⚠️ 주의사항
 
-1. **속도 제한**: 너무 많은 요청을 보내면 IP가 차단될 수 있습니다. 적절한 대기 시간을 유지하세요.
-
-2. **웹사이트 변경**: 올리브영 웹사이트 구조가 변경되면 크롤러가 작동하지 않을 수 있습니다.
-
-3. **법적 책임**: 크롤링한 데이터는 개인적인 용도로만 사용하세요. 상업적 사용 전에 올리브영의 이용약관을 확인하세요.
-
-4. **Chrome 브라우저**: Chrome 브라우저가 설치되어 있어야 합니다. ChromeDriver는 자동으로 다운로드됩니다.
+1. **Cloudflare**: 초기 접속 시 수동 검증 필요 (Chrome 프로필 저장으로 재사용)
+2. **속도 제한**: 과도한 요청 시 IP 차단 가능
+3. **웹사이트 변경**: 올리브영 구조 변경 시 업데이트 필요
+4. **개인 용도**: 크롤링 데이터는 개인 학습/연구 목적으로만 사용
 
 ## 🐛 문제 해결
 
-### Chrome 관련 오류
+### 서버가 시작되지 않음
 ```bash
-# ChromeDriver 캐시 삭제
-rm -rf ~/.wdm
+# 가상환경 활성화 확인
+venv\Scripts\activate
+
+# 패키지 재설치
+uv pip install -r requirements.txt
 ```
 
-### 상품을 찾을 수 없음
-- 검색어를 더 일반적인 단어로 변경해보세요
-- 브라우저 표시 모드(y)로 실행하여 페이지를 직접 확인하세요
+### Cloudflare 검증 반복
+- `chrome_profile/` 폴더 삭제 후 재시작
+- 수동 검증 후 프로필 저장 확인
 
-### 느린 속도
-- headless 모드(n)로 실행하면 더 빠릅니다
-- 추출할 상품 개수를 줄여보세요
+### 리뷰가 누락됨
+- v4.0에서 대부분 해결됨
+- 네트워크 지연 시 대기 시간 증가 필요
 
-## 📝 코드 이해하기
+## 📝 변경 이력
 
-### 주요 클래스: `OliveyoungCrawler`
-
-```python
-from src.crawler_selenium import OliveyoungCrawler
-
-# 크롤러 초기화
-crawler = OliveyoungCrawler(headless=True)
-
-# 브라우저 시작
-crawler.start()
-
-# 홈페이지 접속
-crawler.navigate_to_home()
-
-# 상품 검색
-crawler.search_product("토너")
-
-# 상품 정보 추출
-products = crawler.extract_product_info(max_products=10)
-
-# 데이터 저장
-crawler.save_to_json(products, "my_data")
-crawler.save_to_csv(products, "my_data")
-
-# 브라우저 종료
-crawler.stop()
-```
-
-## 🙋 FAQ
-
-**Q: 몇 개까지 상품을 추출할 수 있나요?**
-A: 검색 결과 페이지에 표시되는 상품만 추출 가능합니다 (보통 24~48개). 더 많은 상품이 필요하면 페이지 넘김 기능을 추가해야 합니다.
-
-**Q: 특정 카테고리의 상품만 수집할 수 있나요?**
-A: 현재는 검색 기능만 지원합니다. 카테고리별 수집 기능은 추후 추가할 수 있습니다.
-
-**Q: 데이터를 엑셀로 바로 저장할 수 있나요?**
-A: CSV 파일을 생성하면 엑셀에서 바로 열 수 있습니다. UTF-8 BOM 인코딩을 사용하여 한글이 깨지지 않습니다.
+- **v4.0** (2025-11-27): Shadow DOM 지원, 실시간 수집, Web UI 추가
+- **v3.0**: 리뷰 크롤링 기능 추가
+- **v2.0**: 상품 상세 정보 수집
+- **v1.0**: 기본 검색 및 상품 목록 수집
 
 ## 📄 라이선스
 
-이 프로젝트는 개인 학습 및 연구 목적으로 제작되었습니다.
-
-## 👨‍💻 개발 정보
-
-- Python 3.10
-- Selenium 4.15.2
-- pandas 2.1.3
+개인 학습 및 연구 목적으로 제작되었습니다.
 
 ---
 
-**만든 날짜**: 2025-11-12
-**버전**: 1.0.0
+**Repository**: https://github.com/arimons/oliveyoung-crawler  
+**Version**: 4.0.0  
+**Last Updated**: 2025-11-27
