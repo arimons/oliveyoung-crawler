@@ -659,7 +659,7 @@ class ReviewCrawler:
                         if "최신순" in btn_text:
                             self.driver.execute_script("arguments[0].click();", btn)
                             print("  ✅ '최신순' 클릭 완료")
-                            time.sleep(1)
+                            time.sleep(2)  # 1초 -> 2초 대기 (안정성 확보)
                             sort_clicked = True
                             break
                     except:
@@ -709,9 +709,7 @@ class ReviewCrawler:
             
             while scroll_count < max_scrolls:
                 try:
-                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                    time.sleep(0.5)
-                    
+                    # 1. 수집 (스크롤 전에 먼저 수행하여 상단 리뷰 확보)
                     try:
                         items = self.driver.execute_script(find_reviews_js)
                         
@@ -759,10 +757,19 @@ class ReviewCrawler:
                     except:
                         pass
 
+                    # 2. 스크롤
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(1) # 0.5초 -> 1초 대기
+                    
+                    # 3. 높이 확인
                     new_height = self.driver.execute_script("return document.body.scrollHeight")
                     if new_height == last_height:
-                        print(f"  ✅ 스크롤 완료 (마지막: {last_date_str})")
-                        break
+                        # 한 번 더 대기 후 확인 (네트워크 지연 대비)
+                        time.sleep(1)
+                        new_height = self.driver.execute_script("return document.body.scrollHeight")
+                        if new_height == last_height:
+                            print(f"  ✅ 스크롤 완료 (마지막: {last_date_str})")
+                            break
                     last_height = new_height
                     scroll_count += 1
                     
