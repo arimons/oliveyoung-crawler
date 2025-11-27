@@ -33,22 +33,28 @@ IF ERRORLEVEL 1 (
     GOTO :END
 )
 
-REM --- 2. Python 찾기 (py launcher 또는 python 명령) ---
+REM --- 2. Python 찾기 (3.12 우선, 없으면 다른 버전) ---
 ECHO.
 ECHO [2/6] 🔍 Searching for Python...
 
-py --version >nul 2>&1
+py -3.12 --version >nul 2>&1
 IF ERRORLEVEL 0 (
-    set "PYTHON_EXEC=py"
-    ECHO ✅ Found Python via 'py' launcher.
+    set "PYTHON_EXEC=py -3.12"
+    ECHO ✅ Found Python 3.12 via 'py' launcher.
 ) ELSE (
-    python --version >nul 2>&1
+    py --version >nul 2>&1
     IF ERRORLEVEL 0 (
-        set "PYTHON_EXEC=python"
-        ECHO ✅ Found Python via 'python' command.
+        set "PYTHON_EXEC=py"
+        ECHO ✅ Found Python via 'py' launcher.
     ) ELSE (
-        ECHO ❌ ERROR: Python not found. Please install Python 3.8 or higher.
-        GOTO :END
+        python --version >nul 2>&1
+        IF ERRORLEVEL 0 (
+            set "PYTHON_EXEC=python"
+            ECHO ✅ Found Python via 'python' command.
+        ) ELSE (
+            ECHO ❌ ERROR: Python not found. Please install Python 3.8 or higher.
+            GOTO :END
+        )
     )
 )
 
@@ -102,11 +108,12 @@ ECHO [6/6] 🔗 Creating Desktop Shortcut...
 
 set "CURRENT_DIR=%CD%"
 set "TARGET_SCRIPT=%CURRENT_DIR%\start_server.bat"
+set "ICON_PATH=%CURRENT_DIR%\assets\icon.ico"
 set "SHORTCUT_NAME=Olive Young Crawler.lnk"
 set "DESKTOP=%USERPROFILE%\Desktop"
 
-REM PowerShell로 바로가기 생성 (경로 이스케이프 처리)
-powershell -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP%\%SHORTCUT_NAME%'); $s.TargetPath = '%TARGET_SCRIPT%'; $s.WorkingDirectory = '%CURRENT_DIR%'; $s.Save()"
+REM PowerShell로 바로가기 생성 (아이콘 포함)
+powershell -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP%\%SHORTCUT_NAME%'); $s.TargetPath = '%TARGET_SCRIPT%'; $s.WorkingDirectory = '%CURRENT_DIR%'; $s.IconLocation = '%ICON_PATH%'; $s.Save()"
 
 IF ERRORLEVEL 1 (
     ECHO ⚠️ WARNING: Desktop shortcut creation failed. You can manually run start_server.bat
