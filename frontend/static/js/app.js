@@ -286,5 +286,20 @@ async function openDataFolder() {
     }
 }
 
+// Initialize review end date to 1 week ago
+function initializeReviewDate() {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    // Format: YYYY-MM-DD
+    const year = oneWeekAgo.getFullYear();
+    const month = String(oneWeekAgo.getMonth() + 1).padStart(2, '0');
+    const day = String(oneWeekAgo.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+
+    document.getElementById('common-review-end-date').value = dateString;
+}
+
 // Initial load
+initializeReviewDate();
 loadHistory();

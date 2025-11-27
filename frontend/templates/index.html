@@ -56,14 +56,14 @@
                     </select>
                 </div>
                 <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:1rem;">
-                    <input type="checkbox" id="common-collect-reviews" style="width:auto;" onchange="toggleCommonReviewDate()">
+                    <input type="checkbox" id="common-collect-reviews" style="width:auto;" onchange="toggleCommonReviewDate()" checked>
                     <label for="common-collect-reviews" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰 텍스트 수집</label>
                 </div>
                 <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
                     <input type="checkbox" id="common-reviews-only" style="width:auto;">
                     <label for="common-reviews-only" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰만 수집 (이미지 건너뛰기)</label>
                 </div>
-                <div class="setting-item hidden" id="common-review-date-container">
+                <div class="setting-item" id="common-review-date-container">
                     <label style="font-size:0.85rem;">리뷰 수집 종료일</label>
                     <input type="date" id="common-review-end-date" style="font-size:0.85rem;">
                 </div>
