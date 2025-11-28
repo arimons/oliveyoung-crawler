@@ -269,36 +269,28 @@ class OliveyoungIntegratedCrawler:
         print(f"URL 크롤링")
         print(f"{'='*60}\n")
 
-        # 폴더 생성 (임시 이름)
+        # 상품명이 제공되지 않은 경우, 페이지에서 먼저 추출
         if not product_name:
-            product_name = f"product_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            print(f"ℹ️ 상품명을 찾기 전까지 임시 폴더에 저장합니다: {product_name}")
+            print("ℹ️  상품명을 페이지에서 추출합니다...")
+            # 상세 페이지로 이동
+            self.detail_crawler.go_to_product_detail(product_url)
+            # 상품 정보에서 상품명만 먼저 추출
+            temp_info = self.detail_crawler.extract_product_info_from_detail()
+            product_name = temp_info.get("상품명", "Unknown")
+            
+            if product_name and product_name != "Unknown":
+                # 상품명 정리 (첫 줄, 최대 50자)
+                product_name = product_name.split('\n')[0][:50]
+                print(f"✅ 상품명 추출 완료: {product_name}")
+            else:
+                product_name = f"product_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                print(f"⚠️  상품명을 찾을 수 없어 임시 이름 사용: {product_name}")
 
+        # 폴더 생성 (이제 실제 상품명으로)
         save_folder = self.create_product_folder(product_name)
 
         # 상세 크롤링
         product_info = self.crawl_product_detail_by_url(product_url, save_folder, split_mode=split_mode, collect_reviews=collect_reviews, review_end_date=review_end_date, reviews_only=reviews_only)
-
-        # 실제 상품명으로 폴더 이름 변경
-        if product_info.get("상품명") and product_info["상품명"] != "정보 없음":
-            actual_name = (product_info["상품명"] or "Unknown").split('\n')[0][:50]
-            new_folder = self.create_product_folder(actual_name)
-
-            # 파일 이동
-            import shutil
-            if os.path.exists(save_folder):
-                for file in os.listdir(save_folder):
-                    shutil.move(
-                        os.path.join(save_folder, file),
-                        os.path.join(new_folder, file)
-                    )
-                os.rmdir(save_folder)
-                save_folder = new_folder
-                product_info["이미지_경로"] = os.path.join(new_folder, "product_detail_merged.jpg")
-                
-                # 리뷰 파일 경로도 업데이트
-                if collect_reviews:
-                    product_info["리뷰_파일_경로"] = os.path.join(new_folder, "reviews.txt")
 
         # 데이터 저장
         self.save_product_info(product_info, save_folder, save_format)

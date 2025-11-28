@@ -19,6 +19,15 @@ class CrawlUrlRequest(BaseModel):
     reviews_only: bool = False
     review_end_date: Optional[str] = None
 
+class CrawlParallelRequest(BaseModel):
+    urls: List[str]
+    concurrency: int = 3
+    save_format: str = "both"
+    split_mode: str = "aggressive"
+    collect_reviews: bool = False
+    reviews_only: bool = False
+    review_end_date: Optional[str] = None
+
 class CrawlerStatus(BaseModel):
     is_running: bool
     current_action: str

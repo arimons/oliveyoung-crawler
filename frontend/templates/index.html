@@ -26,6 +26,9 @@
                 <button class="nav-item" data-tab="history">
                     <i class="fa-solid fa-clock-rotate-left"></i> 히스토리
                 </button>
+                <button class="nav-item" data-tab="ai">
+                    <i class="fa-solid fa-robot"></i> AI 분석
+                </button>
             </nav>
 
             <div class="status-card">
@@ -56,14 +59,14 @@
                     </select>
                 </div>
                 <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:1rem;">
-                    <input type="checkbox" id="common-collect-reviews" style="width:auto;" onchange="toggleCommonReviewDate()">
+                    <input type="checkbox" id="common-collect-reviews" style="width:auto;" onchange="toggleCommonReviewDate()" checked>
                     <label for="common-collect-reviews" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰 텍스트 수집</label>
                 </div>
                 <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
                     <input type="checkbox" id="common-reviews-only" style="width:auto;">
                     <label for="common-reviews-only" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰만 수집 (이미지 건너뛰기)</label>
                 </div>
-                <div class="setting-item hidden" id="common-review-date-container">
+                <div class="setting-item" id="common-review-date-container">
                     <label style="font-size:0.85rem;">리뷰 수집 종료일</label>
                     <input type="date" id="common-review-end-date" style="font-size:0.85rem;">
                 </div>
@@ -99,6 +102,7 @@
                     <div class="tabs-input">
                         <button class="tab-btn" onclick="switchInputMode('keyword')">키워드 검색</button>
                         <button class="tab-btn active" onclick="switchInputMode('url')">URL 직접 입력</button>
+                        <button class="tab-btn" onclick="switchInputMode('multi-url')">다중 URL (병렬)</button>
                     </div>
 
                     <div class="card input-card">
@@ -139,6 +143,24 @@
                                 <i class="fa-solid fa-bolt"></i> 상세 정보 추출
                             </button>
                         </div>
+
+                        <!-- Multi-URL Form -->
+                        <div id="multi-url-form" class="form-group hidden">
+                            <label>상품 URL 목록 (한 줄에 하나씩)</label>
+                            <textarea id="multi-url-input" rows="6" placeholder="https://www.oliveyoung.co.kr/...\nhttps://www.oliveyoung.co.kr/...\n..."></textarea>
+                            
+                            <div class="options-grid">
+                                <div class="option-item">
+                                    <label>동시 실행 수 (최대 5)</label>
+                                    <input type="range" id="concurrency-slider" min="1" max="5" value="3" oninput="document.getElementById('concurrency-val').textContent = this.value">
+                                    <span id="concurrency-val" style="font-weight:bold; color:var(--accent);">3</span>
+                                </div>
+                            </div>
+
+                            <button class="btn-primary" onclick="startParallelCrawl()">
+                                <i class="fa-solid fa-layer-group"></i> 병렬 추출 시작
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -161,13 +183,85 @@
                 </div>
             </div>
 
+            <!-- AI Analysis Tab -->
+            <div id="ai-tab" class="tab-content">
+                <header class="top-bar">
+                    <h2>AI 리뷰/이미지 분석</h2>
+                    <div class="user-profile" style="gap: 1rem;">
+                        <!-- Model Selection -->
+                        <select id="ai-model-select" class="header-select" style="width: auto; padding: 0.4rem 2rem 0.4rem 1rem; font-size: 0.9rem; background-color: var(--bg-card);">
+                            <option value="gpt-5-mini">GPT-5 Mini</option>
+                            <option value="gpt-4o-mini">GPT-4o Mini</option>
+                            <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
+                        </select>
+                        
+                        <!-- API Key (Moved to Header) -->
+                        <div class="input-wrapper" style="width: 200px;">
+                            <input type="password" id="openai-api-key" placeholder="API Key" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
+                        </div>
+                        <button class="btn-sm" onclick="saveConfig()" title="설정 저장">
+                            <i class="fa-solid fa-floppy-disk"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="ai-container">
+                    <!-- Top Control Bar (Simplified) -->
+                    <div class="card control-bar">
+                        <!-- Product Selection -->
+                        <div class="control-group product-group" style="width: 100%;">
+                            <label>분석할 상품 선택 <button class="btn-sm" onclick="loadProductList()" style="float:right; padding: 2px 8px;" title="목록 새로고침"><i class="fa-solid fa-rotate-right"></i></button></label>
+                            <select id="product-select" onchange="loadProductPreview()">
+                                <option value="">상품을 선택하세요...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Prompts Grid -->
+                    <div class="prompts-grid">
+                        <!-- Review Analysis Column -->
+                        <div class="card prompt-card">
+                            <label>텍스트 리뷰 프롬프트</label>
+                            <textarea id="review-prompt" placeholder="리뷰 분석을 위한 프롬프트를 입력하세요..."></textarea>
+                            <button class="btn-primary" onclick="analyzeReviews()">
+                                <i class="fa-solid fa-comment-dots"></i> 리뷰 분석
+                            </button>
+                        </div>
+
+                        <!-- Image Analysis Column -->
+                        <div class="card prompt-card">
+                            <label>이미지 분석 프롬프트</label>
+                            <textarea id="image-prompt" placeholder="이미지 분석을 위한 프롬프트를 입력하세요..."></textarea>
+                            <button class="btn-primary" onclick="analyzeImages()">
+                                <i class="fa-solid fa-image"></i> 이미지 분석
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Results Section -->
+                    <div class="card result-card">
+                        <h3>분석 결과</h3>
+                        <div id="ai-result-area" class="markdown-body">
+                            <div class="placeholder-text">
+                                분석 결과가 여기에 표시됩니다.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- History Tab -->
             <div id="history-tab" class="tab-content">
                 <header class="top-bar">
                     <h2>추출 히스토리</h2>
-                    <button class="btn-secondary" onclick="loadHistory()">
-                        <i class="fa-solid fa-rotate"></i> 새로고침
-                    </button>
+                    <div class="button-group" style="margin-top:0; gap:0.5rem;">
+                        <button class="btn-secondary" onclick="mergeHistory()">
+                            <i class="fa-solid fa-code-merge"></i> 중복 병합
+                        </button>
+                        <button class="btn-secondary" onclick="loadHistory()">
+                            <i class="fa-solid fa-rotate"></i> 새로고침
+                        </button>
+                    </div>
                 </header>
 
                 <div class="history-grid" id="history-grid">

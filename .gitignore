@@ -34,15 +34,56 @@ config/
 
 # OS
 .DS_Store
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+test*
+debug*
+show_browser.py
+merged_images_*/
+config/
+
+# Legacy apps (deprecated)
+app.py
+app_v2.py
+
+# Data
+data/
+data/*.json
+data/*.csv
+
+# IDE
+.vscode/
+.idea/
+config/
+*.swp
+*.swo
+
+# OS
+.DS_Store
 Thumbs.db
 
 # Playwright
 playwright-report/
 test-results/
 
+# Chrome profile directory (for Cloudflare bypass)
 chrome_profile/
+chrome_profile_*/
 
 *.png
 *.jpg
 *.jpeg
 
+
+# User Configuration
+config/user_config.json

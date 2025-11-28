@@ -299,12 +299,14 @@ select {
     background-color: var(--bg-card);
     border: 1px solid var(--border);
     color: var(--text-main);
-    padding: 0.5rem 1rem;
+    padding: 0.6rem 1.2rem;
     border-radius: 0.5rem;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    white-space: nowrap;
+    min-width: fit-content;
 }
 
 .btn-secondary:hover {
@@ -429,4 +431,133 @@ select {
 .btn-sm:hover {
     background-color: var(--primary);
     border-color: var(--primary);
+}
+/* AI Analysis Tab Styles */
+.ai-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.config-card {
+    background: linear-gradient(145deg, var(--bg-card), rgba(139, 92, 246, 0.05));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    min-height: 500px;
+}
+
+.button-group {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.button-group button {
+    flex: 1;
+}
+
+.result-card {
+    display: flex;
+    flex-direction: column;
+}
+
+#ai-result-area {
+    flex: 1;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    overflow-y: auto;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: #e2e8f0;
+    border: 1px solid var(--border);
+    min-height: 400px;
+}
+
+.placeholder-text {
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 2rem;
+    font-style: italic;
+}
+
+.loading-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: var(--accent);
+    height: 100%;
+}
+
+textarea {
+    width: 100%;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.95rem;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* New AI UI Layout */
+.control-bar {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-end;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.product-group {
+    flex: 1;
+}
+
+.api-group {
+    width: 250px;
+}
+
+.api-group .input-wrapper {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.prompts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.prompt-card {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    height: 100%;
+}
+
+.prompt-card textarea {
+    flex: 1;
+    min-height: 150px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.result-card {
+    min-height: 300px;
 }

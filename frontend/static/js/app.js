@@ -34,13 +34,105 @@ function switchInputMode(mode) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active'); // Assumes event is available
     
+    const multiUrlForm = document.getElementById('multi-url-form');
+    
+    keywordForm.classList.add('hidden');
+    urlForm.classList.add('hidden');
+    multiUrlForm.classList.add('hidden');
+
     if (mode === 'keyword') {
         keywordForm.classList.remove('hidden');
-        urlForm.classList.add('hidden');
-    } else {
-        keywordForm.classList.add('hidden');
+    } else if (mode === 'url') {
         urlForm.classList.remove('hidden');
+    } else if (mode === 'multi-url') {
+        multiUrlForm.classList.remove('hidden');
     }
+}
+
+async function startParallelCrawl() {
+    const urlsText = document.getElementById('multi-url-input').value;
+    const concurrency = document.getElementById('concurrency-slider').value;
+    
+    // Common Settings
+    const saveFormat = document.getElementById('common-save-format').value;
+    const splitMode = document.getElementById('common-split-mode').value;
+    const collectReviews = document.getElementById('common-collect-reviews').checked;
+    const reviewsOnly = document.getElementById('common-reviews-only').checked;
+    let reviewEndDate = null;
+
+    if (collectReviews) {
+        const dateInput = document.getElementById('common-review-end-date').value;
+        if (dateInput) {
+            reviewEndDate = dateInput.replace(/-/g, '.');
+        }
+    }
+
+    if (!urlsText.trim()) {
+        alert('URL을 입력해주세요');
+        return;
+    }
+
+    const urls = urlsText.split('\n').map(u => u.trim()).filter(u => u);
+
+    if (urls.length === 0) {
+        alert('유효한 URL이 없습니다');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/crawl/parallel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                urls: urls,
+                concurrency: parseInt(concurrency),
+                save_format: saveFormat,
+                split_mode: splitMode,
+                collect_reviews: collectReviews,
+                reviews_only: reviewsOnly,
+                review_end_date: reviewEndDate
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail);
+        }
+
+        const data = await res.json();
+        
+        // Start polling for parallel crawl progress
+        startParallelPolling();
+        
+    } catch (e) {
+        alert(`오류: ${e.message}`);
+    }
+}
+
+function startParallelPolling() {
+    liveStatus.classList.remove('hidden');
+    
+    const interval = setInterval(async () => {
+        try {
+            const res = await fetch(`${API_BASE}/crawl/parallel/status`);
+            const status = await res.json();
+            
+            // Update UI
+            const pct = Math.round(status.progress * 100);
+            progressBar.style.width = `${pct}%`;
+            progressPercent.textContent = `${pct}%`;
+            currentAction.textContent = `병렬 크롤링 중... (${status.completed_tasks}/${status.total_tasks})`;
+            
+            if (!status.is_running && status.completed_tasks > 0) {
+                clearInterval(interval);
+                alert(`병렬 크롤링 완료!\n완료: ${status.completed_tasks}개`);
+                loadHistory();
+                resetUI();
+            }
+        } catch (e) {
+            console.error('Parallel polling error', e);
+        }
+    }, 2000); // Poll every 2 seconds
 }
 
 function toggleCommonReviewDate() {
@@ -152,14 +244,6 @@ async function startUrlCrawl() {
     }
 }
 
-async function stopCrawl() {
-    try {
-        await fetch(`${API_BASE}/stop`, { method: 'POST' });
-    } catch (e) {
-        console.error(e);
-    }
-}
-
 function startPolling() {
     if (isPolling) return;
     isPolling = true;
@@ -230,6 +314,13 @@ function resetUI() {
 }
 
 async function loadHistory() {
+    // Auto-cleanup temp folders on load
+    try {
+        await fetch(`${API_BASE}/history/cleanup`, { method: 'POST' });
+    } catch (e) {
+        console.warn('Cleanup failed', e);
+    }
+
     const grid = document.getElementById('history-grid');
     grid.innerHTML = '<div style="color:var(--text-muted)">로딩 중...</div>';
 
@@ -286,5 +377,187 @@ async function openDataFolder() {
     }
 }
 
+async function mergeHistory() {
+    if (!confirm('중복된 상품 폴더를 병합하시겠습니까?\n(가장 최신 폴더를 기준으로 병합되며, 오래된 폴더는 삭제됩니다.)')) {
+        return;
+    }
+    
+    const grid = document.getElementById('history-grid');
+    const originalContent = grid.innerHTML;
+    grid.innerHTML = '<div style="color:var(--accent); text-align:center; padding:2rem;"><i class="fa-solid fa-spinner fa-spin"></i> 병합 중입니다...</div>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/history/merge`, { method: 'POST' });
+        if (!res.ok) throw new Error('Merge failed');
+        
+        const data = await res.json();
+        alert(`병합 완료!\n- 병합된 그룹: ${data.merged_groups}개\n- 삭제된 폴더: ${data.deleted_folders}개`);
+        loadHistory(); // Refresh list
+    } catch (e) {
+        grid.innerHTML = originalContent;
+        alert('병합 실패: ' + e.message);
+    }
+}
+
+// AI Analysis Functions
+async function loadConfig() {
+    try {
+        const res = await fetch(`${API_BASE}/config`);
+        if (res.ok) {
+            const config = await res.json();
+            document.getElementById('openai-api-key').value = config.openai_api_key || '';
+            document.getElementById('review-prompt').value = config.review_prompt || '';
+            document.getElementById('image-prompt').value = config.image_prompt || '';
+            
+            // Set model if exists
+            if (config.model) {
+                const modelSelect = document.getElementById('ai-model-select');
+                if (modelSelect) modelSelect.value = config.model;
+            }
+        }
+    } catch (e) {
+        console.error('Config load failed', e);
+    }
+}
+
+async function saveConfig() {
+    const apiKey = document.getElementById('openai-api-key').value;
+    const reviewPrompt = document.getElementById('review-prompt').value;
+    const imagePrompt = document.getElementById('image-prompt').value;
+    const model = document.getElementById('ai-model-select').value;
+
+    try {
+        const res = await fetch(`${API_BASE}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                openai_api_key: apiKey,
+                model: model,
+                review_prompt: reviewPrompt,
+                image_prompt: imagePrompt
+            })
+        });
+
+        if (res.ok) {
+            alert('설정이 저장되었습니다.');
+        } else {
+            alert('설정 저장 실패');
+        }
+    } catch (e) {
+        alert('설정 저장 중 오류 발생: ' + e.message);
+    }
+}
+
+async function loadProductList() {
+    try {
+        const res = await fetch(`${API_BASE}/results`);
+        const results = await res.json();
+        
+        const select = document.getElementById('product-select');
+        select.innerHTML = '<option value="">상품을 선택하세요...</option>';
+        
+        results.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.folder_name;
+            option.textContent = item.product_name;
+            select.appendChild(option);
+        });
+    } catch (e) {
+        console.error('Failed to load product list', e);
+    }
+}
+
+async function analyzeReviews() {
+    const productFolder = document.getElementById('product-select').value;
+    const prompt = document.getElementById('review-prompt').value;
+    const resultArea = document.getElementById('ai-result-area');
+
+    if (!productFolder) {
+        alert('분석할 상품을 선택해주세요.');
+        return;
+    }
+
+    resultArea.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> 분석 중입니다...</div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/analyze/reviews`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                product_folder: productFolder,
+                prompt: prompt
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail);
+        }
+
+        const data = await res.json();
+        // Simple markdown rendering (replace newlines with <br> for now, or use a library if available)
+        // For better UX, we'll just wrap in pre-wrap for now
+        resultArea.innerHTML = `<div style="white-space: pre-wrap; font-family: sans-serif; line-height: 1.6;">${data.result}</div>`;
+        
+    } catch (e) {
+        resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
+    }
+}
+
+async function analyzeImages() {
+    const productFolder = document.getElementById('product-select').value;
+    const prompt = document.getElementById('image-prompt').value;
+    const resultArea = document.getElementById('ai-result-area');
+
+    if (!productFolder) {
+        alert('분석할 상품을 선택해주세요.');
+        return;
+    }
+
+    resultArea.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> 이미지 분석 중입니다... (시간이 걸릴 수 있습니다)</div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/analyze/images`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                product_folder: productFolder,
+                prompt: prompt
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail);
+        }
+
+        const data = await res.json();
+        resultArea.innerHTML = `<div style="white-space: pre-wrap; font-family: sans-serif; line-height: 1.6;">${data.result}</div>`;
+        
+    } catch (e) {
+        resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
+    }
+}
+
+function loadProductPreview() {
+    // Optional: Show selected product thumbnail or info
+}
+
 // Initial load
 loadHistory();
+loadConfig();
+loadProductList();
+
+// Set default review end date to 1 week ago
+function setDefaultReviewDate() {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const dateStr = oneWeekAgo.toISOString().split('T')[0];
+    document.getElementById('common-review-end-date').value = dateStr;
+}
+
+setDefaultReviewDate();
+
+// Refresh product list when switching to AI tab
+document.querySelector('button[data-tab="ai"]').addEventListener('click', loadProductList);
+

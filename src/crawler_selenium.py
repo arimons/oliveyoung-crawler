@@ -35,12 +35,15 @@ class OliveyoungCrawler:
         """브라우저 시작"""
         print("🚀 브라우저 시작 중...")
 
-        # 영구 User Data 디렉토리 사용 (Cloudflare 우회용)
+        # 프로세스별 고유 User Data 디렉토리 사용 (병렬 크롤링 지원)
         import os
-        self.temp_user_data = os.path.abspath("chrome_profile")
+        import multiprocessing
+        process_id = multiprocessing.current_process().pid
+        
+        self.temp_user_data = os.path.abspath(f"chrome_profile_{process_id}")
         if not os.path.exists(self.temp_user_data):
             os.makedirs(self.temp_user_data)
-        print(f"🔧 User Data 디렉토리: {self.temp_user_data}")
+        print(f"🔧 User Data 디렉토리: {self.temp_user_data} (PID: {process_id})")
 
         # Chrome 옵션 설정
         options = webdriver.ChromeOptions()
@@ -73,21 +76,14 @@ class OliveyoungCrawler:
         options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
         # 드라이버 설정 및 시작
-        driver_path = ChromeDriverManager().install()
-        # 정확한 chromedriver 경로 찾기
-        import os
-        driver_dir = os.path.dirname(driver_path)
-        actual_driver = os.path.join(driver_dir, "chromedriver")
-
-        if not os.path.exists(actual_driver):
-            # chromedriver 파일 찾기
-            for file in os.listdir(driver_dir):
-                if file == "chromedriver" or file.startswith("chromedriver"):
-                    actual_driver = os.path.join(driver_dir, file)
-                    break
-
-        service = Service(actual_driver)
-        self.driver = webdriver.Chrome(service=service, options=options)
+        try:
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=options)
+        except Exception as e:
+            print(f"❌ ChromeDriver 설치 실패: {e}")
+            print("재시도 중...")
+            # Fallback: 시스템 PATH에서 chromedriver 찾기
+            self.driver = webdriver.Chrome(options=options)
 
         # WebDriver 속성 숨기기
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -102,6 +98,15 @@ class OliveyoungCrawler:
             self.driver.quit()
             print("🛑 브라우저 종료")
         self.driver = None
+        
+        # 프로세스별 프로파일 폴더 삭제
+        if self.temp_user_data and os.path.exists(self.temp_user_data):
+            try:
+                import shutil
+                shutil.rmtree(self.temp_user_data)
+                print(f"🗑️  프로파일 폴더 삭제: {self.temp_user_data}")
+            except Exception as e:
+                print(f"⚠️  프로파일 폴더 삭제 실패: {e}")
 
     def search_product(self, keyword: str):
         """
