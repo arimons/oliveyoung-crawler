@@ -15,6 +15,7 @@ debug*
 show_browser.py
 merged_images_*/
 config/
+.env
 
 # Legacy apps (deprecated)
 app.py
