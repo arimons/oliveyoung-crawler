@@ -45,24 +45,41 @@
 
             <!-- Common Settings in Sidebar -->
             <div class="settings-card">
-                <h3>공통 설정</h3>
-                <div class="setting-item">
-                    <label>저장 형식</label>
-                    <select id="common-save-format">
-                        <option value="both">JSON + CSV</option>
-                        <option value="json">JSON Only</option>
-                        <option value="csv">CSV Only</option>
-                    </select>
+                <h3>리뷰 수집 설정</h3>
+                <!-- 저장 형식 옵션 숨기기 (JSON + CSV로 고정) -->
+                <select id="common-save-format" style="display: none;">
+                    <option value="both" selected>JSON + CSV</option>
+                </select>
+                
+                <!-- 리뷰만 수집 옵션 -->
+                <div class="setting-item review-only-section">
+                    <div class="review-option-item">
+                        <label for="common-reviews-only" class="review-option-label">
+                            <input type="checkbox" id="common-reviews-only">
+                            <i class="fa-solid fa-comment-medical"></i>
+                            <span>리뷰만 수집</span>
+                        </label>
+                    </div>
                 </div>
-                <div class="setting-item" id="common-review-date-container">
-                    <label style="font-size:0.85rem;">이날 부터 리뷰를 수집합니다 (YYYY-MM-DD)</label>
-                    <input type="date" id="common-review-end-date" style="font-size:0.85rem;">
+                
+                <div class="review-toggle-section">
+                    <div class="setting-item review-checkbox-item">
+                        <label for="common-collect-reviews" class="review-toggle-label">
+                            <input type="checkbox" id="common-collect-reviews" 
+                                   onchange="toggleCommonReviewDate()" checked>
+                            <i class="fa-solid fa-comment-dots"></i>
+                            <span>리뷰 텍스트 수집</span>
+                        </label>
+                    </div>
                 </div>
-                <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:1rem;">
-                    <input type="checkbox" id="common-collect-reviews" style="width:auto;"
-                        onchange="toggleCommonReviewDate()" checked>
-                    <label for="common-collect-reviews" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰 텍스트
-                        수집</label>
+                
+                <div class="setting-item review-date-section" id="common-review-date-container">
+                    <label class="review-date-label">
+                        <i class="fa-solid fa-calendar-day"></i>
+                        <span>이 날짜부터 리뷰 수집</span>
+                    </label>
+                    <input type="date" id="common-review-end-date" class="review-date-input">
+                    <small class="review-date-hint">선택하지 않으면 모든 리뷰를 수집합니다</small>
                 </div>
             </div>
 
@@ -263,6 +280,12 @@
                 <header class="top-bar">
                     <h2>추출 히스토리</h2>
                     <div class="button-group" style="margin-top:0; gap:0.5rem;">
+                        <button class="btn-secondary" id="select-all-btn" onclick="toggleSelectAll()">
+                            <i class="fa-solid fa-check-double"></i> 전체 선택
+                        </button>
+                        <button class="btn-danger" id="delete-selected-btn" onclick="deleteSelected()" style="display: none;">
+                            <i class="fa-solid fa-trash"></i> 선택 삭제 (0)
+                        </button>
                         <button class="btn-secondary" onclick="mergeHistory()">
                             <i class="fa-solid fa-code-merge"></i> 중복 병합
                         </button>
@@ -274,6 +297,17 @@
 
                 <div class="history-grid" id="history-grid">
                     <!-- History items will be injected here -->
+                </div>
+            </div>
+
+            <!-- History Detail Tab -->
+            <div id="history-detail-tab" class="tab-content">
+                <header class="top-bar">
+                    <h2 id="detail-product-title">상품 상세 정보</h2>
+                </header>
+
+                <div class="detail-container" id="detail-container">
+                    <!-- Product detail content will be injected here -->
                 </div>
             </div>
         </main>

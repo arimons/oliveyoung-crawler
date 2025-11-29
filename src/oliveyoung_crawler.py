@@ -193,6 +193,10 @@ class OliveyoungIntegratedCrawler:
             print(f"📝 리뷰 텍스트 수집 중... (종료일: {review_end_date})")
             review_file = os.path.join(save_folder, "reviews.txt")
             
+            # 리뷰 탭 클릭 시도 (#reviewInfo > a)
+            if self.detail_crawler.click_review_tab():
+                print("✅ 리뷰 탭 활성화 완료")
+            
             # New Layout (Infinite Scroll) 시도
             try:
                 review_count = self.review_crawler.crawl_reviews_infinite_scroll(

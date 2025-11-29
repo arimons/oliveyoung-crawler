@@ -16,6 +16,7 @@ show_browser.py
 merged_images_*/
 config/
 .env
+.claude
 
 # Legacy apps (deprecated)
 app.py

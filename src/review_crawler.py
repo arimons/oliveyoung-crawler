@@ -54,32 +54,167 @@ class ReviewCrawler:
 
     def select_latest_sort(self) -> bool:
         """
-        리뷰 정렬을 '최신순'으로 변경
+        리뷰 정렬을 '최신순'으로 변경 (JavaScript 강제 처리)
 
         Returns:
             성공 여부
         """
         try:
-            print("🔄 리뷰 정렬을 '최신순'으로 변경 중...")
+            print("🔄 리뷰 정렬을 '최신순'으로 변경 중... (JavaScript 강제 처리)")
 
-            # '최신순' 버튼 찾기 (data-sort-type-code="latest")
-            latest_button = self.driver.find_element(
-                By.CSS_SELECTOR, "a[data-sort-type-code='latest']"
-            )
+            # JavaScript로 강력한 최신순 정렬 처리
+            success = self.driver.execute_script("""
+                console.log('🔄 최신순 정렬 JavaScript 처리 시작');
+                
+                let sortClicked = false;
+                
+                // ========== 기본 선택자들 ==========
+                const basicSelectors = [
+                    "#gdasSort > li:nth-child(3) > a",  // 사용자 제공 선택자 (최신순)
+                    "a[data-sort-type-code='latest']",
+                    "a[data-value='02']",
+                    "a[data-sort='latest']", 
+                    "button[data-sort='latest']",
+                    "option[value='latest']",
+                    "option[value='LATEST']"
+                ];
+                
+                // 기본 선택자로 먼저 시도
+                for (let selector of basicSelectors) {
+                    try {
+                        const elem = document.querySelector(selector);
+                        if (elem) {
+                            elem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                            
+                            if (elem.tagName.toLowerCase() === 'option') {
+                                const select = elem.closest('select');
+                                if (select) {
+                                    select.value = elem.value;
+                                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                                    console.log(`✅ 최신순 정렬 선택 (select): ${selector}`);
+                                } else {
+                                    elem.click();
+                                    console.log(`✅ 최신순 정렬 클릭: ${selector}`);
+                                }
+                            } else {
+                                elem.click();
+                                console.log(`✅ 최신순 정렬 클릭: ${selector}`);
+                            }
+                            
+                            sortClicked = true;
+                            break;
+                        }
+                    } catch (e) {
+                        console.log(`⚠️ 기본 선택자 실패 (${selector}): ${e.message}`);
+                    }
+                }
+                
+                // ========== 텍스트 기반 검색 ==========
+                if (!sortClicked) {
+                    const sortTextPatterns = [
+                        '최신순', '최신 순', '최신', '최신등록순', 
+                        'newest', 'latest', 'recent', '등록순'
+                    ];
+                    
+                    const allElements = document.querySelectorAll('*');
+                    for (let elem of allElements) {
+                        const text = elem.textContent || '';
+                        const tagName = elem.tagName.toLowerCase();
+                        
+                        // 클릭 가능한 요소만 확인
+                        if (['button', 'a', 'option', 'li', 'span', 'div'].includes(tagName)) {
+                            for (let pattern of sortTextPatterns) {
+                                if (text.trim() === pattern || (text.includes(pattern) && text.length < 20)) {
+                                    try {
+                                        elem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                                        
+                                        if (tagName === 'option') {
+                                            const select = elem.closest('select');
+                                            if (select) {
+                                                select.value = elem.value;
+                                                select.dispatchEvent(new Event('change', { bubbles: true }));
+                                                console.log(`✅ 최신순 정렬 선택 (텍스트기반 select): ${text.trim()}`);
+                                            }
+                                        } else {
+                                            elem.click();
+                                            console.log(`✅ 최신순 정렬 클릭 (텍스트기반 ${tagName}): ${text.trim()}`);
+                                        }
+                                        
+                                        sortClicked = true;
+                                        break;
+                                    } catch (e) {
+                                        console.log(`⚠️ 텍스트기반 클릭 실패 (${text.trim()}): ${e.message}`);
+                                    }
+                                }
+                            }
+                            if (sortClicked) break;
+                        }
+                    }
+                }
+                
+                // ========== 정렬 드롭다운 찾기 ==========
+                if (!sortClicked) {
+                    const sortDropdowns = document.querySelectorAll('select, .dropdown, .sort-select');
+                    for (let dropdown of sortDropdowns) {
+                        const text = dropdown.textContent || '';
+                        if (text.includes('정렬') || text.includes('순서') || text.includes('sort')) {
+                            try {
+                                // select 요소인 경우
+                                if (dropdown.tagName.toLowerCase() === 'select') {
+                                    const options = dropdown.querySelectorAll('option');
+                                    for (let option of options) {
+                                        const optText = option.textContent || '';
+                                        if (optText.includes('최신')) {
+                                            dropdown.value = option.value;
+                                            dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+                                            console.log(`✅ 드롭다운에서 최신순 선택: ${optText.trim()}`);
+                                            sortClicked = true;
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    // 일반 드롭다운 클릭
+                                    dropdown.click();
+                                    console.log(`✅ 정렬 드롭다운 클릭: ${text.trim()}`);
+                                    
+                                    // 클릭 후 최신순 옵션 찾기
+                                    setTimeout(() => {
+                                        const newOptions = document.querySelectorAll('*');
+                                        for (let opt of newOptions) {
+                                            const optText = opt.textContent || '';
+                                            if (optText.includes('최신') && optText.length < 15) {
+                                                try {
+                                                    opt.click();
+                                                    console.log(`✅ 드롭다운에서 최신순 선택: ${optText.trim()}`);
+                                                    sortClicked = true;
+                                                    break;
+                                                } catch (e) {}
+                                            }
+                                        }
+                                    }, 500);
+                                }
+                                if (sortClicked) break;
+                            } catch (e) {
+                                console.log(`⚠️ 드롭다운 처리 실패: ${e.message}`);
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`🎯 최신순 정렬 결과: ${sortClicked}`);
+                return sortClicked;
+            """)
 
-            # 버튼이 보이도록 스크롤
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", latest_button)
-            time.sleep(0.5)
-
-            # 클릭
-            latest_button.click()
-            print("✅ '최신순' 정렬 선택 완료")
-            time.sleep(2)  # 리뷰 재로딩 대기
-
-            return True
+            if success:
+                print("  ✅ JavaScript 최신순 정렬 성공")
+                time.sleep(2)  # 리뷰 재로딩 대기
+                return True
+            else:
+                print("  ⚠️ JavaScript 최신순 정렬 실패")
+                return False
 
         except Exception as e:
-            print(f"⚠️  정렬 변경 실패: {e}")
+            print(f"⚠️  JavaScript 정렬 처리 실패: {e}")
             return False
 
     def get_current_page_numbers(self) -> List[int]:

@@ -13,6 +13,7 @@ import tempfile
 from typing import List, Dict
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
+# URL compression is now handled in frontend
 
 
 class ProductDetailCrawler:
@@ -72,9 +73,319 @@ class ProductDetailCrawler:
             print("⚠️  페이지 로딩 대기 타임아웃, 계속 진행")
             time.sleep(2)
 
+    def detect_layout_type(self) -> str:
+        """
+        현재 페이지의 레이아웃 타입 감지 (Legacy vs New)
+        
+        Returns:
+            'legacy' 또는 'new'
+        """
+        try:
+            print("🔍 레이아웃 타입 감지 중...")
+            
+            # Legacy layout 상품명 선택자 확인
+            legacy_selectors = [
+                "#Contents > div.prd_detail_box.renew > div.right_area > div > p.prd_name",
+                "p.prd_name"
+            ]
+            
+            # New layout 상품명 선택자 확인  
+            new_selectors = [
+                "div[class*='GoodsDetailInfo_title-area'] > h3",
+                "div[class*='title-area'] > h3"
+            ]
+            
+            # Legacy layout 시도
+            for selector in legacy_selectors:
+                try:
+                    elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    if elem.text.strip():
+                        print("  ✅ Legacy Layout 감지!")
+                        return 'legacy'
+                except:
+                    continue
+            
+            # New layout 시도
+            for selector in new_selectors:
+                try:
+                    elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    if elem.text.strip():
+                        print("  ✅ New Layout 감지!")
+                        return 'new'
+                except:
+                    continue
+                    
+            # 둘 다 실패하면 JavaScript로 확인
+            layout_type = self.driver.execute_script("""
+                // Legacy layout 패턴 확인
+                const legacyIndicators = [
+                    '#Contents',
+                    '.prd_detail_box.renew',
+                    '#repReview',
+                    '#buyInfo',
+                    '#artcInfo'
+                ];
+                
+                // New layout 패턴 확인
+                const newIndicators = [
+                    'div[class*="GoodsDetailInfo"]',
+                    'div[class*="ReviewArea"]',
+                    'div[class*="page_product-details-wrapper"]'
+                ];
+                
+                let legacyScore = 0;
+                let newScore = 0;
+                
+                // Legacy 점수 계산
+                legacyIndicators.forEach(selector => {
+                    if (document.querySelector(selector)) {
+                        legacyScore++;
+                    }
+                });
+                
+                // New 점수 계산
+                newIndicators.forEach(selector => {
+                    if (document.querySelector(selector)) {
+                        newScore++;
+                    }
+                });
+                
+                return legacyScore > newScore ? 'legacy' : 'new';
+            """)
+            
+            print(f"  ✅ JavaScript 감지 결과: {layout_type.title()} Layout")
+            return layout_type
+            
+        except Exception as e:
+            print(f"  ⚠️ 레이아웃 감지 실패: {e}, Legacy로 기본 설정")
+            return 'legacy'
+
+    def click_review_tab(self) -> bool:
+        """
+        리뷰 탭 클릭 및 최신순 정렬 (JavaScript 강제 처리)
+        
+        Returns:
+            클릭 성공 여부
+        """
+        try:
+            print("🔍 리뷰 탭 클릭 및 정렬 설정 시도... (JavaScript 강제 처리)")
+            
+            # JavaScript로 강력한 탭 클릭 및 정렬 처리
+            success = self.driver.execute_script("""
+                console.log('🔍 리뷰 탭 및 정렬 JavaScript 처리 시작');
+                
+                let tabClicked = false;
+                let sortClicked = false;
+                
+                // ========== 1단계: 리뷰 탭 클릭 ==========
+                
+                // Legacy layout 리뷰 탭들
+                const legacyTabSelectors = [
+                    '#reviewInfo > a',
+                    '#reviewInfo a',
+                    'a[href*="#reviewInfo"]',
+                    'a[onclick*="reviewInfo"]'
+                ];
+                
+                // New layout 리뷰 탭들  
+                const newTabSelectors = [
+                    '#tab-panels > section > ul > li:nth-child(3) > button',
+                    'button[data-tab="review"]',
+                    'button[aria-controls*="review"]',
+                    'li:nth-child(3) > button'
+                ];
+                
+                // 모든 가능한 리뷰 탭 선택자 시도
+                const allTabSelectors = [...legacyTabSelectors, ...newTabSelectors];
+                
+                for (let selector of allTabSelectors) {
+                    try {
+                        const tab = document.querySelector(selector);
+                        if (tab) {
+                            // 스크롤해서 보이게 하기
+                            tab.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                            
+                            // 클릭 시도
+                            tab.click();
+                            
+                            console.log(`✅ 리뷰 탭 클릭 성공: ${selector}`);
+                            tabClicked = true;
+                            break;
+                        }
+                    } catch (e) {
+                        console.log(`⚠️ 리뷰 탭 클릭 실패 (${selector}): ${e.message}`);
+                    }
+                }
+                
+                // 탭 클릭 후 잠시 대기 (리뷰 영역 로딩)
+                if (tabClicked) {
+                    // 동기적으로 대기하기 위해 busywait 사용
+                    const start = Date.now();
+                    while (Date.now() - start < 2000) {
+                        // 2초 대기
+                    }
+                }
+                
+                // ========== 2단계: 최신순 정렬 클릭 ==========
+                
+                // 최신순 관련 텍스트 패턴들
+                const sortTextPatterns = ['최신순', '최신 순', '최신', '최신등록순', 'newest', 'latest'];
+                
+                // 정렬 관련 선택자들 (사용자 제공 선택자 최우선)
+                const sortSelectors = [
+                    '#gdasSort > li:nth-child(3) > a',  // 사용자 제공 선택자 (최신순)
+                    'a[data-sort-type-code="latest"]',
+                    'a[data-value="02"]',
+                    'select[name*="sort"]',
+                    'select[id*="sort"]', 
+                    'button[data-sort]',
+                    '.sort-option',
+                    '.sorting-option',
+                    'a[onclick*="sort"]',
+                    'button[onclick*="sort"]'
+                ];
+                
+                // 정렬 선택자 먼저 시도
+                for (let selector of sortSelectors) {
+                    try {
+                        const sortElem = document.querySelector(selector);
+                        if (sortElem) {
+                            // 요소가 보이도록 스크롤
+                            sortElem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                            
+                            // href="javascript:;" 인 경우 강제 클릭
+                            if (sortElem.tagName.toLowerCase() === 'a') {
+                                // JavaScript 링크 강제 실행
+                                sortElem.click();
+                                
+                                // onclick 이벤트가 있으면 직접 실행
+                                const onClickAttr = sortElem.getAttribute('onclick');
+                                if (onClickAttr) {
+                                    eval(onClickAttr);
+                                }
+                                
+                                console.log(`✅ 최신순 정렬 클릭 성공 (선택자): ${selector}`);
+                                sortClicked = true;
+                                
+                                // 클릭 후 대기
+                                const waitStart = Date.now();
+                                while (Date.now() - waitStart < 1000) {
+                                    // 1초 대기
+                                }
+                                break;
+                            } else {
+                                sortElem.click();
+                                console.log(`✅ 최신순 정렬 클릭 성공 (선택자): ${selector}`);
+                                sortClicked = true;
+                                
+                                // 클릭 후 대기
+                                const waitStart2 = Date.now();
+                                while (Date.now() - waitStart2 < 1000) {
+                                    // 1초 대기
+                                }
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`⚠️ 선택자 시도 실패 (${selector}): ${e.message}`);
+                    }
+                }
+                
+                // 선택자로 실패하면 텍스트 기반 검색
+                if (!sortClicked) {
+                    console.log('선택자 시도 실패, 텍스트 기반 검색 시작');
+                    const allElements = document.querySelectorAll('*');
+                    for (let elem of allElements) {
+                    const text = elem.textContent || '';
+                    const tagName = elem.tagName.toLowerCase();
+                    
+                    // 클릭 가능한 요소만 확인
+                    if (['button', 'a', 'option', 'li', 'span'].includes(tagName)) {
+                        for (let pattern of sortTextPatterns) {
+                            if (text.trim() === pattern || text.includes(pattern)) {
+                                try {
+                                    // 요소가 보이도록 스크롤
+                                    elem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                                    
+                                    // Select의 option인 경우 select를 찾아서 value 설정
+                                    if (tagName === 'option') {
+                                        const select = elem.closest('select');
+                                        if (select) {
+                                            select.value = elem.value;
+                                            // change 이벤트 발생
+                                            select.dispatchEvent(new Event('change', { bubbles: true }));
+                                            console.log(`✅ 최신순 정렬 선택 (select): ${text.trim()}`);
+                                            sortClicked = true;
+                                            break;
+                                        }
+                                    } else {
+                                        // 일반 클릭
+                                        elem.click();
+                                        console.log(`✅ 최신순 정렬 클릭 (${tagName}): ${text.trim()}`);
+                                        sortClicked = true;
+                                        break;
+                                    }
+                                } catch (e) {
+                                    console.log(`⚠️ 최신순 클릭 실패 (${text.trim()}): ${e.message}`);
+                                }
+                            }
+                        }
+                        if (sortClicked) break;
+                    }
+                }
+                
+                // 특별히 드롭다운이나 필터 버튼들도 시도
+                if (!sortClicked) {
+                    const filterButtons = document.querySelectorAll('button, a, .filter, .dropdown');
+                    for (let btn of filterButtons) {
+                        const text = btn.textContent || '';
+                        if (text.includes('정렬') || text.includes('순서') || text.includes('sort')) {
+                            try {
+                                btn.click();
+                                console.log(`✅ 정렬 관련 버튼 클릭: ${text.trim()}`);
+                                
+                                // 클릭 후 최신순 옵션 다시 찾기
+                                setTimeout(() => {
+                                    const newOptions = document.querySelectorAll('*');
+                                    for (let opt of newOptions) {
+                                        const optText = opt.textContent || '';
+                                        if (optText.includes('최신')) {
+                                            try {
+                                                opt.click();
+                                                console.log(`✅ 드롭다운에서 최신순 선택: ${optText.trim()}`);
+                                                sortClicked = true;
+                                                break;
+                                            } catch (e) {}
+                                        }
+                                    }
+                                }, 500);
+                                break;
+                            } catch (e) {
+                                console.log(`⚠️ 정렬 버튼 클릭 실패: ${e.message}`);
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`🎯 결과: 탭클릭=${tabClicked}, 정렬=${sortClicked}`);
+                return tabClicked; // 탭 클릭만 성공하면 OK (정렬은 옵션)
+            """)
+            
+            if success:
+                print("  ✅ JavaScript 리뷰 탭 클릭 성공")
+                time.sleep(3)  # 정렬 완료 대기
+                return True
+            else:
+                print("  ⚠️ JavaScript 리뷰 탭 클릭 실패")
+                return False
+                
+        except Exception as e:
+            print(f"  ⚠️ JavaScript 리뷰 탭 처리 실패: {e}")
+            return False
+
     def extract_review_metadata(self) -> Dict[str, any]:
         """
-        리뷰 개수와 별점 추출 (Legacy layout - #repReview)
+        리뷰 개수와 별점 추출 (Layout 자동 감지)
 
         Returns:
             {"리뷰_총개수": int, "별점": float} 형태의 딕셔너리
@@ -82,38 +393,143 @@ class ProductDetailCrawler:
         metadata = {"리뷰_총개수": 0, "별점": 0.0}
 
         try:
-            # Legacy layout selector로 추출
-            # #repReview: <b>별점</b> <em>(리뷰수건)</em>
+            # 레이아웃 타입 감지
+            layout_type = self.detect_layout_type()
+            
+            # JavaScript 강제 추출 (모든 가능한 패턴 시도)
             result = self.driver.execute_script(r"""
                 const debug = {};
                 let rating = 0.0;
                 let totalCount = 0;
-
+                
+                // ========== Legacy Layout 패턴 ==========
                 // 별점: #repReview > b - "4.9"
-                const ratingElem = document.querySelector('#repReview > b');
-                if (ratingElem) {
-                    const text = ratingElem.textContent.trim();
-                    debug.ratingText = text;
-                    debug.ratingHTML = ratingElem.outerHTML;
-
-                    // 별점 추출
+                const legacyRatingElem = document.querySelector('#repReview > b');
+                if (legacyRatingElem) {
+                    const text = legacyRatingElem.textContent.trim();
+                    debug.legacyRatingText = text;
+                    
                     const ratingMatch = text.match(/([0-9]+\.?[0-9]*)/);
                     if (ratingMatch) {
                         rating = parseFloat(ratingMatch[1]);
+                        debug.ratingSource = 'legacy_repReview_b';
                     }
                 }
 
                 // 리뷰수: #repReview > em - "(37,563건)"
-                const totalElem = document.querySelector('#repReview > em');
-                if (totalElem) {
-                    const text = totalElem.textContent.trim();
-                    debug.totalText = text;
-                    debug.totalHTML = totalElem.outerHTML;
-
-                    // 리뷰수 추출: "(37,563건)" → "37563"
+                const legacyTotalElem = document.querySelector('#repReview > em');
+                if (legacyTotalElem) {
+                    const text = legacyTotalElem.textContent.trim();
+                    debug.legacyTotalText = text;
+                    
                     const countMatch = text.match(/\(([0-9,]+)/);
                     if (countMatch) {
                         totalCount = parseInt(countMatch[1].replace(/,/g, ''));
+                        debug.totalSource = 'legacy_repReview_em';
+                    }
+                }
+                
+                // ========== Alternative Legacy 패턴 ==========
+                // span.rating 패턴
+                if (rating === 0.0) {
+                    const altRatingElem = document.querySelector('span.rating');
+                    if (altRatingElem) {
+                        const ratingText = altRatingElem.textContent.replace('평점', '').trim();
+                        const ratingMatch = ratingText.match(/([0-9]+\.?[0-9]*)/);
+                        if (ratingMatch) {
+                            rating = parseFloat(ratingMatch[1]);
+                            debug.ratingSource = 'span.rating';
+                            debug.altRatingText = ratingText;
+                        }
+                    }
+                }
+                
+                // ========== New Layout 패턴 ==========
+                // 별점: div[class*='ReviewArea_rating-star'] > span
+                if (rating === 0.0) {
+                    const newRatingElem = document.querySelector("div[class*='ReviewArea_rating-star'] > span");
+                    if (newRatingElem) {
+                        const ratingText = newRatingElem.textContent.trim();
+                        const ratingMatch = ratingText.match(/([0-9]+\.?[0-9]*)/);
+                        if (ratingMatch) {
+                            rating = parseFloat(ratingMatch[1]);
+                            debug.ratingSource = 'new_ReviewArea_rating-star';
+                            debug.newRatingText = ratingText;
+                        }
+                    }
+                }
+
+                // 리뷰수: div[class*='ReviewArea_review-count'] > button > span
+                if (totalCount === 0) {
+                    const newCountElem = document.querySelector("div[class*='ReviewArea_review-count'] > button > span");
+                    if (newCountElem) {
+                        const countText = newCountElem.textContent.trim().replace(",", "").replace("건", "");
+                        const countMatch = countText.match(/([0-9,]+)/);
+                        if (countMatch) {
+                            totalCount = parseInt(countMatch[1].replace(/,/g, ''));
+                            debug.totalSource = 'new_ReviewArea_review-count';
+                            debug.newTotalText = countText;
+                        }
+                    }
+                }
+                
+                // ========== 강력한 Fallback 패턴들 ==========
+                // 모든 텍스트에서 별점 패턴 찾기
+                if (rating === 0.0) {
+                    const allElements = document.querySelectorAll('*');
+                    for (let elem of allElements) {
+                        const text = elem.textContent || '';
+                        // "별점 4.9", "평점: 4.8", "4.7점" 등의 패턴
+                        const patterns = [
+                            /별점\s*[:：]?\s*([0-9]+\.?[0-9]*)/,
+                            /평점\s*[:：]?\s*([0-9]+\.?[0-9]*)/,
+                            /([0-9]+\.?[0-9]*)\s*점/,
+                            /rating\s*[:：]?\s*([0-9]+\.?[0-9]*)/i
+                        ];
+                        
+                        for (let pattern of patterns) {
+                            const match = text.match(pattern);
+                            if (match) {
+                                const foundRating = parseFloat(match[1]);
+                                if (foundRating >= 0 && foundRating <= 5) {
+                                    rating = foundRating;
+                                    debug.ratingSource = 'fallback_text_search';
+                                    debug.fallbackRatingText = text;
+                                    break;
+                                }
+                            }
+                        }
+                        if (rating > 0) break;
+                    }
+                }
+                
+                // 모든 텍스트에서 리뷰수 패턴 찾기
+                if (totalCount === 0) {
+                    const allElements = document.querySelectorAll('*');
+                    for (let elem of allElements) {
+                        const text = elem.textContent || '';
+                        // "(2,890건)", "리뷰 1,234개", "1234 reviews" 등의 패턴
+                        const patterns = [
+                            /\(([0-9,]+)건\)/,
+                            /리뷰\s*([0-9,]+)\s*개/,
+                            /([0-9,]+)\s*개\s*리뷰/,
+                            /([0-9,]+)\s*reviews?/i,
+                            /총\s*([0-9,]+)\s*건/
+                        ];
+                        
+                        for (let pattern of patterns) {
+                            const match = text.match(pattern);
+                            if (match) {
+                                const foundCount = parseInt(match[1].replace(/,/g, ''));
+                                if (foundCount > 0 && foundCount < 1000000) { // 상식적인 범위
+                                    totalCount = foundCount;
+                                    debug.totalSource = 'fallback_text_search';
+                                    debug.fallbackTotalText = text;
+                                    break;
+                                }
+                            }
+                        }
+                        if (totalCount > 0) break;
                     }
                 }
 
@@ -124,58 +540,41 @@ class ProductDetailCrawler:
                 };
             """)
 
-            # New Layout Logic (Fallback)
-            if result.get("total", 0) == 0:
-                try:
-                    # 별점: div[class*='ReviewArea_rating-star'] > span
-                    rating_elem = self.driver.find_element(By.CSS_SELECTOR, "div[class*='ReviewArea_rating-star'] > span")
-                    metadata["별점"] = float(rating_elem.text.strip())
-                    print(f"  ⭐ 별점 (New Layout): {metadata['별점']}")
-                except:
-                    pass
-
-                try:
-                    # 리뷰수: div[class*='ReviewArea_review-count'] > button > span
-                    count_elem = self.driver.find_element(By.CSS_SELECTOR, "div[class*='ReviewArea_review-count'] > button > span")
-                    count_text = count_elem.text.strip().replace(",", "").replace("건", "")
-                    metadata["리뷰_총개수"] = int(count_text)
-                    print(f"  📊 리뷰 총 개수 (New Layout): {metadata['리뷰_총개수']}")
-                except:
-                    pass
-            
-            # 3. Fallback: User provided HTML structure for Rating
-            # <span class="rating"><span class="oyblind">평점</span>4.9</span>
-            if metadata["별점"] == 0.0:
-                try:
-                    rating_elem = self.driver.find_element(By.CSS_SELECTOR, "span.rating")
-                    rating_text = rating_elem.text.replace("평점", "").strip()
-                    metadata["별점"] = float(rating_text)
-                    print(f"  ⭐ 별점 (span.rating): {metadata['별점']}")
-                except:
-                    pass
-            else:
-                if result:
-                    # 디버깅 정보 출력
-                    debug_info = result.get("debug", {})
-                    if debug_info.get('ratingText'):
-                        print(f"  별점 텍스트: {debug_info.get('ratingText')}")
-                    if debug_info.get('totalText'):
-                        print(f"  리뷰수 텍스트: {debug_info.get('totalText')}")
-
-                    metadata["리뷰_총개수"] = result.get("total", 0)
-                    metadata["별점"] = result.get("rating", 0.0)
-
-                    if metadata["리뷰_총개수"] > 0:
-                        print(f"📊 리뷰 총 개수: {metadata['리뷰_총개수']}개")
-                    else:
-                        print(f"⚠️  리뷰 개수를 찾을 수 없음")
-
-                    if metadata["별점"] > 0:
-                        print(f"⭐ 별점: {metadata['별점']}점")
-                    else:
-                        print(f"⚠️  별점을 찾을 수 없음")
+            # 결과 처리 및 디버깅 정보 출력
+            if result:
+                debug_info = result.get("debug", {})
+                metadata["리뷰_총개수"] = result.get("total", 0)
+                metadata["별점"] = result.get("rating", 0.0)
+                
+                # 성공적으로 추출된 정보 출력
+                if metadata["리뷰_총개수"] > 0:
+                    source = debug_info.get("totalSource", "unknown")
+                    print(f"📊 리뷰 총 개수: {metadata['리뷰_총개수']}개 (출처: {source})")
+                    if debug_info.get('legacyTotalText'):
+                        print(f"    텍스트: {debug_info.get('legacyTotalText')}")
+                    elif debug_info.get('newTotalText'):
+                        print(f"    텍스트: {debug_info.get('newTotalText')}")
+                    elif debug_info.get('fallbackTotalText'):
+                        print(f"    텍스트: {debug_info.get('fallbackTotalText')}")
                 else:
-                    print(f"⚠️  JavaScript 실행 결과가 없음")
+                    print(f"⚠️  리뷰 개수를 찾을 수 없음")
+
+                if metadata["별점"] > 0:
+                    source = debug_info.get("ratingSource", "unknown")
+                    print(f"⭐ 별점: {metadata['별점']}점 (출처: {source})")
+                    if debug_info.get('legacyRatingText'):
+                        print(f"    텍스트: {debug_info.get('legacyRatingText')}")
+                    elif debug_info.get('newRatingText'):
+                        print(f"    텍스트: {debug_info.get('newRatingText')}")
+                    elif debug_info.get('fallbackRatingText'):
+                        print(f"    텍스트: {debug_info.get('fallbackRatingText')}")
+                else:
+                    print(f"⚠️  별점을 찾을 수 없음")
+                    
+                # 감지된 레이아웃에 따른 추가 정보
+                print(f"🎯 감지된 레이아웃: {layout_type.title()}")
+            else:
+                print(f"⚠️  JavaScript 실행 결과가 없음")
 
         except Exception as e:
             print(f"⚠️  리뷰 메타데이터 추출 실패: {e}")
@@ -186,70 +585,136 @@ class ProductDetailCrawler:
 
     def extract_specific_info(self) -> Dict[str, str]:
         """
-        사용자가 요청한 4가지 특정 상품 정보 추출
-        #tab-panels > section > ul > li:nth-child(1) > button 클릭 후
-        테이블에서 헤더 텍스트를 검색하여 값 추출
+        사용자가 요청한 4가지 특정 상품 정보 추출 (Layout 자동 감지)
+        레이아웃에 따라 다른 선택자 사용
         """
         info = {}
-        target_headers = [
+
+        # 레이아웃 타입 감지
+        layout_type = self.detect_layout_type()
+
+        try:
+            print(f"🔍 상세 상품 정보 추출 시도... ({layout_type.title()} Layout)")
+
+            if layout_type == 'legacy':
+                # Legacy layout 처리
+                info = self._extract_specific_info_legacy()
+            else:
+                # New layout 처리
+                info = self._extract_specific_info_new()
+
+        except Exception as e:
+            print(f"⚠️ 상세 정보 추출 중 오류: {e}")
+
+        return info
+
+    def _extract_specific_info_legacy(self) -> Dict[str, str]:
+        """
+        Legacy layout에서 상세 정보 추출
+        """
+        info = {}
+        target_selectors = {
+            "사용기한(또는 개봉 후 사용기간)": "#buyInfo > a",
+            "사용방법": "#artcInfo > dl:nth-child(5) > dd",
+            "화장품제조업자,화장품책임판매업자 및 맞춤형화장품판매업자": "#artcInfo > dl:nth-child(6) > dd",
+            "화장품법에 따라 기재해야 하는 모든 성분": "#artcInfo > dl:nth-child(8) > dd"
+        }
+
+        try:
+            
+            # 1. #buyInfo > a 클릭 (상품정보 탭)
+            try:
+                buyinfo_button = self.driver.find_element(By.CSS_SELECTOR, "#buyInfo > a")
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", buyinfo_button)
+                buyinfo_button.click()
+                time.sleep(2)  # 정보 로딩 대기
+                print("  ✅ #buyInfo > a 클릭 완료")
+            except Exception as e:
+                print(f"  ⚠️ #buyInfo > a 클릭 실패: {e}")
+
+            # 2. 사용기한 추출 (#buyInfo > a 텍스트에서 직접)
+            try:
+                buyinfo_elem = self.driver.find_element(By.CSS_SELECTOR, "#buyInfo > a")
+                usage_text = buyinfo_elem.text.strip()
+                if usage_text and len(usage_text) > 10:
+                    info["사용기한(또는 개봉 후 사용기간)"] = usage_text
+                    print(f"  ✅ 사용기한: {usage_text[:30]}...")
+            except Exception as e:
+                print(f"  ⚠️ 사용기한 추출 실패: {e}")
+
+            # 3. 나머지 정보들 추출 (#artcInfo 영역에서)
+            for field_name, selector in target_selectors.items():
+                if field_name == "사용기한(또는 개봉 후 사용기간)":
+                    continue  # 이미 추출함
+                    
+                try:
+                    elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    text_content = elem.text.strip()
+                    if text_content:
+                        info[field_name] = text_content
+                        print(f"  ✅ {field_name}: {text_content[:30]}...")
+                except Exception as e:
+                    print(f"  ⚠️ {field_name} 추출 실패: {e}")
+
+        except Exception as e:
+            print(f"⚠️ Legacy 상세 정보 추출 중 오류: {e}")
+
+        return info
+
+    def _extract_specific_info_new(self) -> Dict[str, str]:
+        """
+        New layout에서 상세 정보 추출 (테이블 기반)
+        """
+        info = {}
+        target_fields = [
             "사용기한(또는 개봉 후 사용기간)",
             "사용방법",
             "화장품제조업자,화장품책임판매업자 및 맞춤형화장품판매업자",
             "화장품법에 따라 기재해야 하는 모든 성분"
         ]
-        
+
         try:
-            print("🔍 상세 상품 정보 추출 시도...")
-            
-            # 1. 탭 버튼 클릭 (상품정보 탭)
-            tab_button_selector = "#tab-panels > section > ul > li:nth-child(1) > button"
+            # 1. 상품정보 탭 클릭
             try:
-                button = self.driver.find_element(By.CSS_SELECTOR, tab_button_selector)
-                is_expanded = button.get_attribute("aria-expanded") == "true"
-                
+                tab_button = self.driver.find_element(By.CSS_SELECTOR, "#tab-panels > section > ul > li:nth-child(1) > button")
+                is_expanded = tab_button.get_attribute("aria-expanded") == "true"
+
                 if not is_expanded:
-                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
-                    button.click()
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", tab_button)
+                    tab_button.click()
                     time.sleep(1)
                     print("  ✅ 상품정보 탭 클릭 완료")
-                else:
-                    print("  ℹ️ 상품정보 탭이 이미 열려있음")
             except Exception as e:
-                print(f"  ⚠️ 탭 버튼 클릭 실패: {e}")
+                print(f"  ⚠️ 상품정보 탭 클릭 실패: {e}")
 
-            # 2. 데이터 추출 (테이블 순회)
-            base_selector = "#tab-panels > section > ul > li:nth-child(1) > div > div > table > tbody > tr"
+            # 2. 테이블에서 정보 추출
             try:
-                rows = self.driver.find_elements(By.CSS_SELECTOR, base_selector)
+                rows = self.driver.find_elements(By.CSS_SELECTOR, "#tab-panels > section > ul > li:nth-child(1) > div > div > table > tbody > tr")
                 print(f"  📊 테이블 행 개수: {len(rows)}")
-                
+
                 for row in rows:
                     try:
                         th = row.find_element(By.TAG_NAME, "th")
                         header_text = th.text.strip()
-                        
-                        # 타겟 헤더와 일치하는지 확인 (부분 일치 허용 또는 정확한 매칭)
-                        # 공백 제거 후 비교 등 유연하게 처리
                         clean_header = header_text.replace(" ", "")
-                        
-                        for target in target_headers:
+
+                        for target in target_fields:
                             clean_target = target.replace(" ", "")
-                            if clean_target in clean_header:
+                            if clean_target in clean_header and target not in info:
                                 td = row.find_element(By.TAG_NAME, "td")
                                 value_text = td.text.strip()
                                 info[target] = value_text
-                                print(f"  ✅ 추출 성공: {target} = {value_text[:20]}...")
+                                print(f"  ✅ {target}: {value_text[:30]}...")
                                 break
-                                
-                    except Exception as e:
+                    except Exception:
                         continue
-                        
+
             except Exception as e:
-                print(f"  ⚠️ 테이블 순회 실패: {e}")
+                print(f"  ⚠️ 테이블 추출 실패: {e}")
 
         except Exception as e:
-            print(f"⚠️ 상세 정보 추출 중 오류: {e}")
-            
+            print(f"⚠️ New layout 상세 정보 추출 중 오류: {e}")
+
         return info
 
     def extract_product_info_from_detail(self) -> Dict[str, str]:
@@ -873,8 +1338,33 @@ class ProductDetailCrawler:
         # 분할 모드에 따라 그룹 분할
         if split_mode == "tile":
             image_groups = self._split_images_by_tile_layout(images, display_resolution)
-        else: # 'conservative' or 'aggressive'
-            image_groups = self._split_images_by_context(images, mode=split_mode, similarity_threshold=0.95)
+        elif split_mode == "conservative":
+            # Conservative 모드: 최대한 합치기 (65000px 높이 제한)
+            MAX_HEIGHT = 65000
+            image_groups = []
+            current_group = []
+            current_height = 0
+            
+            for img in images:
+                # 현재 그룹에 추가했을 때의 높이 계산
+                if current_height + img.height > MAX_HEIGHT and current_group:
+                    # 높이 초과 시 현재 그룹 저장하고 새 그룹 시작
+                    image_groups.append(current_group)
+                    current_group = [img]
+                    current_height = img.height
+                else:
+                    # 높이 초과하지 않으면 현재 그룹에 추가
+                    current_group.append(img)
+                    current_height += img.height
+            
+            # 마지막 그룹 추가
+            if current_group:
+                image_groups.append(current_group)
+            
+            print(f"✅ Conservative 모드: {len(images)}개 이미지를 {len(image_groups)}개 그룹으로 분할 (최대 높이: {MAX_HEIGHT}px)")
+        else:  # aggressive 모드 - 각 이미지를 개별 파일로
+            image_groups = [[img] for img in images]
+            print(f"✅ Aggressive 모드: {len(images)}개 이미지를 각각 개별 파일로 저장")
 
         # 각 그룹별로 병합
         saved_paths = []
@@ -992,7 +1482,7 @@ class ProductDetailCrawler:
 
     def extract_product_info_from_detail(self) -> Dict:
         """
-        상세 페이지에서 상품 기본 정보 추출 (Legacy layout)
+        상세 페이지에서 상품 기본 정보 추출 (Layout 자동 감지)
 
         Returns:
             상품 정보 딕셔너리
@@ -1001,7 +1491,11 @@ class ProductDetailCrawler:
         product_info = {}
 
         try:
-            # Legacy layout selector로 추출
+            # 레이아웃 타입 감지 (이미 한번 감지했지만 확실히 하기 위해)
+            layout_type = self.detect_layout_type()
+            print(f"🎯 상품 정보 추출 - 감지된 레이아웃: {layout_type.title()}")
+            
+            # JavaScript로 모든 패턴 시도
             result = self.driver.execute_script(r"""
                 const info = {};
 
@@ -1125,7 +1619,7 @@ class ProductDetailCrawler:
             product_info["상품명"] = name if name else "정보 없음"
             product_info["정상가"] = before_price if before_price else (price if price else "정보 없음")
             product_info["판매가"] = price if price else "정보 없음"
-            product_info["URL"] = self.driver.current_url
+            product_info["상품_URL"] = self.driver.current_url
 
             # Thumbnail Extraction (User Provided Selector)
             # #main > div.page_product-details-wrapper___t38G > div > div.page_left-section__qXr0Q > div > div > div > div.swiper-wrapper > div.swiper-slide.swiper-slide-active > div > img
@@ -1156,7 +1650,7 @@ class ProductDetailCrawler:
             except:
                 # Fallback for legacy layout
                 try:
-                    thumb_elem = self.driver.find_element(By.CSS_SELECTOR, "#main_img")
+                    thumb_elem = self.driver.find_element(By.CSS_SELECTOR, "#mainImg")
                     thumb_url = thumb_elem.get_attribute("src")
                     if thumb_url:
                         product_info["썸네일_URL"] = thumb_url

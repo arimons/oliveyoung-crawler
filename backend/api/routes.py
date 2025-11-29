@@ -11,7 +11,7 @@ import subprocess
 import platform
 import json
 import re
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from datetime import datetime
@@ -52,6 +52,29 @@ def clean_oliveyoung_url(url: str) -> str:
         print(f"URL cleaning failed: {e}")
         return url
 
+def compress_oliveyoung_url(url: str) -> str:
+    """Compress Olive Young URL to only keep goodsNo parameter"""
+    try:
+        if not url:
+            return url
+            
+        parsed = urlparse(url)
+        if "oliveyoung.co.kr" not in parsed.netloc:
+            return url
+            
+        # Extract goodsNo from query parameters
+        query = parse_qs(parsed.query)
+        if 'goodsNo' in query:
+            goods_no = query['goodsNo'][0]
+            # Create clean URL with only goodsNo
+            base_url = "https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do"
+            return f"{base_url}?goodsNo={goods_no}"
+        
+        return url
+    except Exception as e:
+        print(f"URL compression failed: {e}")
+        return url
+
 # Crawling Endpoints
 @router.post("/crawl/keyword")
 async def start_crawl_keyword(request: CrawlKeywordRequest):
@@ -77,11 +100,12 @@ async def start_crawl_url(request: CrawlUrlRequest):
     if crawler_service.is_running:
         raise HTTPException(status_code=400, detail="Crawler is already running")
     
-    cleaned_url = clean_oliveyoung_url(request.url)
+    # URL은 프론트엔드에서 이미 압축되어 전송됨
+    url = request.url
     
     try:
         crawler_service.crawl_url(
-            cleaned_url, 
+            url, 
             request.product_name, 
             request.save_format,
             request.split_mode,
@@ -89,7 +113,7 @@ async def start_crawl_url(request: CrawlUrlRequest):
             request.review_end_date,
             request.reviews_only
         )
-        return {"message": "Crawl started", "url": cleaned_url}
+        return {"message": "Crawl started", "url": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -98,11 +122,12 @@ async def start_crawl_parallel(request: CrawlParallelRequest, background_tasks: 
     if not request.urls:
         raise HTTPException(status_code=400, detail="No URLs provided")
     
-    cleaned_urls = [clean_oliveyoung_url(url) for url in request.urls]
+    # URL들은 프론트엔드에서 이미 압축되어 전송됨
+    urls = request.urls
         
     def run_parallel_crawl():
         parallel_crawler_service.start_parallel_crawl(
-            urls=cleaned_urls,
+            urls=urls,
             max_workers=request.concurrency,
             save_format=request.save_format,
             split_mode=request.split_mode,
@@ -112,7 +137,7 @@ async def start_crawl_parallel(request: CrawlParallelRequest, background_tasks: 
         )
         
     background_tasks.add_task(run_parallel_crawl)
-    return {"message": "Parallel crawl started in background", "task_count": len(cleaned_urls)}
+    return {"message": "Parallel crawl started in background", "task_count": len(urls)}
 
 @router.get("/status", response_model=CrawlerStatus)
 async def get_status():
@@ -213,6 +238,22 @@ async def get_image(folder_name: str):
         
     raise HTTPException(status_code=404, detail="Image not found")
 
+@router.get("/file/{folder_name}/{file_name}")
+async def get_file(folder_name: str, file_name: str):
+    """Serve files from product folder"""
+    data_dir = os.path.join(os.getcwd(), "data")
+    folder_path = os.path.join(data_dir, folder_name)
+    file_path = os.path.join(folder_path, file_name)
+    
+    # Security check - prevent directory traversal
+    if not file_path.startswith(folder_path):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return FileResponse(file_path)
+
 @router.post("/history/merge")
 async def merge_history():
     try:
@@ -228,6 +269,82 @@ async def cleanup_history():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/history/delete")
+async def delete_history_items(folder_names: List[str]):
+    """Delete selected history items"""
+    try:
+        data_dir = os.path.join(os.getcwd(), "data")
+        deleted_count = 0
+        
+        for folder_name in folder_names:
+            folder_path = os.path.join(data_dir, folder_name)
+            if os.path.exists(folder_path) and os.path.isdir(folder_path):
+                import shutil
+                shutil.rmtree(folder_path)
+                deleted_count += 1
+        
+        return {
+            "message": f"{deleted_count}개 항목 삭제 완료",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/history/detail/{folder_name}")
+async def get_history_detail(folder_name: str):
+    """Get detailed information for a history item"""
+    try:
+        data_dir = os.path.join(os.getcwd(), "data")
+        folder_path = os.path.join(data_dir, folder_name)
+        
+        if not os.path.exists(folder_path):
+            raise HTTPException(status_code=404, detail="Folder not found")
+        
+        # Load product info
+        product_info = {}
+        json_path = os.path.join(folder_path, "product_info.json")
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                product_info = json.load(f)
+        
+        # Extract and compress product URL
+        product_url = product_info.get("상품_URL") or product_info.get("URL", "")
+        if product_url:
+            product_url = compress_oliveyoung_url(product_url)
+        
+        # Find all detail images
+        detail_images = []
+        for file in sorted(os.listdir(folder_path)):
+            if file.startswith("product_detail") and file.endswith(('.jpg', '.jpeg', '.png')):
+                detail_images.append(file)
+        
+        # Load review text
+        review_text = ""
+        review_path = os.path.join(folder_path, "reviews.txt")
+        if os.path.exists(review_path):
+            with open(review_path, 'r', encoding='utf-8') as f:
+                review_text = f.read()
+        
+        # Get thumbnail
+        thumbnail = None
+        thumb_path = os.path.join(folder_path, "thumbnail.jpg")
+        if os.path.exists(thumb_path):
+            thumbnail = "thumbnail.jpg"
+        
+        return {
+            "folder_name": folder_name,
+            "product_info": product_info,
+            "product_url": product_url,
+            "detail_images": detail_images,
+            "review_text": review_text,
+            "thumbnail": thumbnail
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Configuration Endpoints
 @router.get("/config")
