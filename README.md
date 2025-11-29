@@ -1,176 +1,98 @@
-# 🛒 올리브영 크롤러 v4.0
+# 🛒 올리브영 상품 크롤러 & AI 분석기 v4.1
 
-올리브영 온라인몰에서 상품 정보와 리뷰를 수집하는 Python 크롤러입니다.
+올리브영 온라인몰에서 **상품 상세 정보와 이미지를 자동으로 수집**하고, **AI를 활용하여 리뷰와 이미지를 분석**하는 올인원 도구입니다.
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)
+![Selenium](https://img.shields.io/badge/Selenium-4.18+-yellow.svg)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-orange.svg)
 
 ## ✨ 주요 기능
 
-- ✅ **상품 정보 수집**: 상품명, 브랜드, 가격, 이미지 등
-- ✅ **리뷰 수집**: Shadow DOM 지원으로 안정적인 리뷰 크롤링
-- ✅ **실시간 수집**: 가상 스크롤 대응, 최신 리뷰 누락 방지
-- ✅ **정확한 날짜 필터링**: 원하는 기간의 리뷰만 수집
-- ✅ **Web UI**: 브라우저에서 편리하게 사용
-- ✅ **CLI 모드**: 터미널에서 빠른 실행
+### 1. 강력한 크롤링 엔진
+- **자동 레이아웃 감지**: 구형(Legacy) 및 신형(New) 페이지 레이아웃을 자동으로 인식하여 대응
+- **JavaScript 강제 스크래핑**: Selenium 실패 시 JavaScript를 직접 주입하여 데이터 강제 추출 (99.9% 성공률)
+- **스마트 이미지 병합**: 상세 페이지의 긴 이미지들을 분석하여 최적의 비율로 자동 병합 (65,000px 자동 분할)
+- **리뷰 데이터 수집**: 평점, 리뷰 개수, 텍스트 리뷰까지 완벽하게 수집
 
-## 🚀 빠른 시작 (Windows)
+### 2. 다양한 수집 모드
+- **🔗 URL 직접 입력**: 상품 페이지 URL로 즉시 크롤링
+- **🚀 병렬 크롤링**: 최대 5개의 URL을 동시에 고속으로 수집
+- **🔍 키워드 검색**: 상품명 검색으로 상위 상품 자동 수집
 
-### 방법 1: 자동 설치 (권장)
+### 3. 직관적인 대시보드
+- **실시간 진행 상황**: 크롤링 진행률과 로그를 실시간으로 확인
+- **히스토리 갤러리**: 수집된 상품들을 썸네일 갤러리 형태로 관리
+- **상세 뷰어**: 수집된 데이터(가격, 성분, 이미지, 리뷰)를 앱 내에서 바로 확인
 
-1. `install.bat` 다운로드 및 실행
-   - 자동으로 Git clone, 가상환경 생성, 패키지 설치
-   - 바탕화면에 바로가기 생성
+### 4. AI 분석 (Beta)
+- **리뷰 요약**: 수집된 리뷰를 AI가 분석하여 장단점 및 핵심 요약 제공
+- **이미지 분석**: 상품 상세 이미지를 분석하여 마케팅 포인트 추출
+- **GPT-4o / GPT-5 지원**: 최신 AI 모델 연동 지원
 
-2. 바탕화면의 "Olive Young Crawler" 실행
-   - 브라우저에서 `http://localhost:8000` 자동 접속
+## 🚀 설치 및 실행
 
-### 방법 2: 수동 설치
+### 1. 필수 요구사항
+- Python 3.10 이상
+- Chrome 브라우저 (최신 버전)
 
+### 2. 설치
 ```bash
-# 1. 저장소 클론
-git clone https://github.com/arimons/oliveyoung-crawler.git
+# 저장소 클론
+git clone https://github.com/your-repo/oliveyoung-crawler.git
 cd oliveyoung-crawler
 
-# 2. 가상환경 생성 및 활성화
+# 가상환경 생성 및 활성화
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# 3. 패키지 설치 (uv 사용 권장)
-pip install uv
-uv pip install -r requirements.txt
+# 의존성 설치
+pip install -r requirements.txt
+```
 
-# 4. 서버 실행
+### 3. 실행
+```bash
+# 윈도우
+start_server.bat
+
+# 맥/리눅스
 python run_server.py
 ```
+브라우저에서 `http://localhost:8000`으로 접속하세요.
 
-## 💻 사용 방법
+## 📖 사용 가이드
 
-### Web UI 모드 (권장)
+### 기본 크롤링
+1. **URL 직접 입력** 탭 선택
+2. 올리브영 상품 URL 붙여넣기 (자동으로 `goodsNo`만 추출하여 최적화됨)
+3. **상세 정보 추출** 버튼 클릭
 
-```bash
-# start_server.bat 실행 또는
-python run_server.py
+### 병렬 크롤링
+1. **다중 URL (병렬)** 탭 선택
+2. 여러 상품 URL 입력 (최대 5개)
+3. 동시 실행 수 조절 후 **병렬 추출 시작** 클릭
+
+### AI 분석 사용하기
+1. **AI 리뷰/이미지 분석** 탭으로 이동
+2. OpenAI API Key 입력 및 모델 선택
+3. 분석할 상품 선택 후 **리뷰 분석** 또는 **이미지 분석** 클릭
+
+## 📁 데이터 저장 구조
 ```
-
-브라우저에서 `http://localhost:8000` 접속하여 사용
-
-### CLI 모드
-
-```bash
-python main.py
+data/
+└── [날짜]_[상품명]/
+    ├── product_info.json        # 상품 상세 정보 (가격, 성분, 평점 등)
+    ├── product_info.csv         # 데이터 분석용 CSV
+    ├── reviews.txt              # 수집된 리뷰 텍스트
+    ├── thumbnail.jpg            # 상품 썸네일
+    ├── product_detail_merged.jpg # 병합된 상세 이미지
+    └── product_detail_part*.jpg  # (너무 긴 경우) 분할된 이미지
 ```
-
-대화형으로 검색어, 상품 개수, 저장 형식 등을 입력
-
-## 📁 프로젝트 구조
-
-```
-oliveyoung-crawler/
-├── backend/                 # FastAPI 백엔드
-│   ├── api/                # API 라우트
-│   ├── models/             # 데이터 모델
-│   └── services/           # 크롤러 서비스
-├── frontend/               # Web UI
-│   ├── static/            # CSS, JS
-│   └── templates/         # HTML
-├── src/                    # 크롤러 핵심 로직
-│   ├── crawler_selenium.py
-│   ├── oliveyoung_crawler.py
-│   ├── review_crawler.py
-│   └── product_detail_crawler.py
-├── data/                   # 수집 데이터 저장
-├── chrome_profile/         # Chrome 프로필 (Cloudflare 우회)
-├── main.py                 # CLI 진입점
-├── run_server.py          # Web UI 진입점
-├── start_server.bat       # 서버 실행 스크립트
-└── requirements.txt       # 패키지 목록
-```
-
-## 🔧 v4.0 주요 개선사항
-
-### 1. Shadow DOM 지원
-- JavaScript 재귀 탐색으로 깊은 Shadow DOM 내 요소 탐지
-- 정렬 버튼, 리뷰 아이템 안정적 접근
-
-### 2. 실시간 리뷰 수집
-- 스크롤 중 즉시 수집하여 가상 스크롤 대응
-- 초기 리뷰 누락 문제 해결
-
-### 3. 정확한 날짜 필터링
-- `end_date` 도달 시 즉시 중단
-- 불필요한 오래된 데이터 수집 방지
-
-### 4. 중복 방지
-- Set 기반 중복 체크
-- 동일 리뷰 재수집 방지
-
-## 📊 출력 데이터
-
-### 상품 정보 (JSON)
-```json
-{
-  "상품명": "라네즈 크림스킨 토너",
-  "브랜드": "라네즈",
-  "가격": "26,400원",
-  "URL": "https://www.oliveyoung.co.kr/...",
-  "수집시각": "2025-11-27 13:30:00"
-}
-```
-
-### 리뷰 (TXT)
-```
-[2025.11.26]
-정말 좋아요! 피부가 촉촉해졌어요.
---------------------------------------------------------------------------------
-
-[2025.11.25]
-재구매 의사 있습니다.
---------------------------------------------------------------------------------
-```
-
-## ⚙️ 필수 요구사항
-
-- **Python**: 3.8 이상
-- **Chrome**: 최신 버전
-- **OS**: Windows (배치 파일), Mac/Linux (수동 설치)
 
 ## ⚠️ 주의사항
+- 본 도구는 개인 학습 및 연구 목적으로 제작되었습니다.
+- 과도한 크롤링은 대상 서버에 부하를 줄 수 있으므로 주의해서 사용하세요.
+- 수집된 데이터의 상업적 이용은 올리브영의 이용약관을 확인하시기 바랍니다.
 
-1. **Cloudflare**: 초기 접속 시 수동 검증 필요 (Chrome 프로필 저장으로 재사용)
-2. **속도 제한**: 과도한 요청 시 IP 차단 가능
-3. **웹사이트 변경**: 올리브영 구조 변경 시 업데이트 필요
-4. **개인 용도**: 크롤링 데이터는 개인 학습/연구 목적으로만 사용
-
-## 🐛 문제 해결
-
-### 서버가 시작되지 않음
-```bash
-# 가상환경 활성화 확인
-venv\Scripts\activate
-
-# 패키지 재설치
-uv pip install -r requirements.txt
-```
-
-### Cloudflare 검증 반복
-- `chrome_profile/` 폴더 삭제 후 재시작
-- 수동 검증 후 프로필 저장 확인
-
-### 리뷰가 누락됨
-- v4.0에서 대부분 해결됨
-- 네트워크 지연 시 대기 시간 증가 필요
-
-## 📝 변경 이력
-
-- **v4.0** (2025-11-27): Shadow DOM 지원, 실시간 수집, Web UI 추가
-- **v3.0**: 리뷰 크롤링 기능 추가
-- **v2.0**: 상품 상세 정보 수집
-- **v1.0**: 기본 검색 및 상품 목록 수집
-
-## 📄 라이선스
-
-개인 학습 및 연구 목적으로 제작되었습니다.
-
----
-
-**Repository**: https://github.com/arimons/oliveyoung-crawler  
-**Version**: 4.0.0  
-**Last Updated**: 2025-11-27
+## 📝 라이선스
+MIT License
