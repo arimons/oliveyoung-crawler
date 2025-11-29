@@ -18,7 +18,7 @@ def _crawl_worker(url: str, product_name: str = None, save_format: str = "json",
         service.start_crawler_instance(headless=False)
         
         result = service.crawler.crawl_product_by_url(
-            url=url,
+            product_url=url,  # Fixed: use product_url parameter name
             product_name=product_name,
             save_format=save_format,
             split_mode=split_mode,
@@ -28,6 +28,9 @@ def _crawl_worker(url: str, product_name: str = None, save_format: str = "json",
         )
         return {"url": url, "status": "success", "result": result}
     except Exception as e:
+        print(f"❌ Worker error for {url}: {e}")
+        import traceback
+        traceback.print_exc()
         return {"url": url, "status": "error", "error": str(e)}
     finally:
         service.stop_crawler_instance()

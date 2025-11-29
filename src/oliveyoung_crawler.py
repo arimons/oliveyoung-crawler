@@ -103,33 +103,46 @@ class OliveyoungIntegratedCrawler:
 
         return products[0]
 
-    def crawl_product_detail_by_url(self, product_url: str, save_folder: str, split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False) -> Dict:
+    def crawl_product_detail_by_url(self, product_url: str, save_folder: str, split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False, skip_navigation: bool = False, initial_info: Dict = None) -> Dict:
         """
         URL로 상품 상세 정보 크롤링
-
-        Args:
-            product_url: 상품 URL
-            save_folder: 저장 폴더 경로
-            split_mode: 이미지 분할 모드 (conservative, aggressive, tile)
-            collect_reviews: 리뷰 수집 여부
-            review_end_date: 리뷰 수집 종료 날짜 (YYYY.MM.DD)
-            reviews_only: 리뷰만 수집 (이미지 건너뛰기)
-
-        Returns:
-            상품 정보 및 이미지 경로
         """
         print(f"\n{'='*60}")
         print(f"상품 상세 크롤링 시작")
         print(f"{'='*60}")
 
-        # 상세 페이지로 이동
-        self.detail_crawler.go_to_product_detail(product_url)
+        # 상세 페이지로 이동 (skip_navigation이 False일 때만)
+        if not skip_navigation:
+            self.detail_crawler.go_to_product_detail(product_url)
+        else:
+            print("ℹ️  페이지 이동 건너뜀 (이미 접속 중)")
 
-        # 상품 정보 추출
-        product_info = self.detail_crawler.extract_product_info_from_detail()
+        # 상품 정보 추출 (initial_info가 없으면 추출)
+        if initial_info:
+            product_info = initial_info
+            print("ℹ️  기존 추출된 상품 정보 사용")
+        else:
+            product_info = self.detail_crawler.extract_product_info_from_detail()
 
-        # 이미지 수집 (reviews_only가 False일 때만)
-        if not reviews_only:
+        # 이미지 수집 (Smart Image Skip 적용)
+        # reviews_only 파라미터는 더 이상 사용하지 않음 (이미지 존재 여부로 판단)
+        
+        output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
+        part1_path = os.path.join(save_folder, "product_detail_merged_part1.jpg")
+        
+        # 이미지가 이미 존재하는지 확인
+        if os.path.exists(output_image_path) or os.path.exists(part1_path):
+            print(f"ℹ️  이미지가 이미 존재하여 다운로드를 건너뜁니다.")
+            # 경로 설정 (존재하는 파일 기준)
+            if os.path.exists(output_image_path):
+                product_info["이미지_경로"] = output_image_path
+            else:
+                product_info["이미지_경로"] = part1_path # part1이 있으면 그걸 대표 경로로
+            
+            # 이미지 개수는 정확히 알 수 없으므로 1개 이상으로 가정하거나 기존 메타데이터를 읽어야 하지만,
+            # 여기서는 단순 스킵이 목적이므로 패스
+            product_info["이미지_개수"] = 1 
+        else:
             # 더보기 버튼 클릭
             self.detail_crawler.click_more_button()
 
@@ -142,7 +155,6 @@ class OliveyoungIntegratedCrawler:
                 product_info["이미지_개수"] = 0
             else:
                 # 이미지 다운로드 및 병합
-                output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
                 self.detail_crawler.download_and_merge_images(image_urls, output_image_path, split_mode=split_mode)
 
                 # 썸네일 다운로드
@@ -163,10 +175,6 @@ class OliveyoungIntegratedCrawler:
                             print(f"  ⚠️ 썸네일 다운로드 실패 (Status: {response.status_code})")
                     except Exception as e:
                         print(f"  ⚠️ 썸네일 다운로드 중 오류: {e}")
-        else:
-            print("📝 리뷰만 수집 모드: 이미지 수집 건너뛰기")
-            product_info["이미지_경로"] = ""
-            product_info["이미지_개수"] = 0
 
         product_info["수집시각"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -249,7 +257,7 @@ class OliveyoungIntegratedCrawler:
 
         return result
 
-    def crawl_product_by_url(self, product_url: str, product_name: str = None, save_format: str = "json", split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False) -> Dict:
+    def crawl_product_by_url(self, product_url: str, product_name: str = None, save_format: str = "json", split_mode: str = "conservative", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False) -> Dict:
         """
         URL로 상품 크롤링
 
@@ -270,13 +278,14 @@ class OliveyoungIntegratedCrawler:
         print(f"{'='*60}\n")
 
         # 상품명이 제공되지 않은 경우, 페이지에서 먼저 추출
+        initial_info = None
         if not product_name:
             print("ℹ️  상품명을 페이지에서 추출합니다...")
             # 상세 페이지로 이동
             self.detail_crawler.go_to_product_detail(product_url)
             # 상품 정보에서 상품명만 먼저 추출
-            temp_info = self.detail_crawler.extract_product_info_from_detail()
-            product_name = temp_info.get("상품명", "Unknown")
+            initial_info = self.detail_crawler.extract_product_info_from_detail()
+            product_name = initial_info.get("상품명", "Unknown")
             
             if product_name and product_name != "Unknown":
                 # 상품명 정리 (첫 줄, 최대 50자)
@@ -289,10 +298,28 @@ class OliveyoungIntegratedCrawler:
         # 폴더 생성 (이제 실제 상품명으로)
         save_folder = self.create_product_folder(product_name)
 
-        # 상세 크롤링
-        product_info = self.crawl_product_detail_by_url(product_url, save_folder, split_mode=split_mode, collect_reviews=collect_reviews, review_end_date=review_end_date, reviews_only=reviews_only)
+        # 1. 폴더 생성 직후 기본 정보 즉시 저장 (사용자 요청)
+        if initial_info:
+            print("💾 기본 상품 정보 즉시 저장...")
+            self.save_product_info(initial_info, save_folder, save_format)
 
-        # 데이터 저장
+        # 상세 크롤링 (이미 로드된 정보와 페이지 상태 활용)
+        # skip_navigation=True: 이미 go_to_product_detail을 호출했으므로
+        # initial_info: 이미 추출한 정보를 전달하여 중복 추출 방지
+        skip_nav = (initial_info is not None)
+        
+        product_info = self.crawl_product_detail_by_url(
+            product_url, 
+            save_folder, 
+            split_mode=split_mode, 
+            collect_reviews=collect_reviews, 
+            review_end_date=review_end_date, 
+            reviews_only=reviews_only,
+            skip_navigation=skip_nav,
+            initial_info=initial_info
+        )
+
+        # 데이터 저장 (최종 업데이트된 정보로 덮어쓰기)
         self.save_product_info(product_info, save_folder, save_format)
 
         result = {

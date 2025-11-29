@@ -465,7 +465,7 @@ class ReviewCrawler:
                 page_group += 1
 
             # 4. 최종 총 개수 업데이트
-            self.update_review_count(output_path, total_count)
+            self.update_review_count(output_path, total_count, end_date)
 
         except Exception as e:
             print(f"❌ 리뷰 크롤링 중 오류 발생: {e}")
@@ -473,7 +473,7 @@ class ReviewCrawler:
             traceback.print_exc()
             # 오류 발생 시에도 지금까지 수집한 리뷰 개수 업데이트
             if total_count > 0:
-                self.update_review_count(output_path, total_count)
+                self.update_review_count(output_path, total_count, end_date)
 
         return total_count
 
@@ -510,7 +510,7 @@ class ReviewCrawler:
         except Exception as e:
             print(f"❌ 리뷰 추가 실패: {e}")
 
-    def update_review_count(self, output_path: str, total_count: int):
+    def update_review_count(self, output_path: str, total_count: int, target_date: str = None):
         """
         리뷰 파일의 총 개수 업데이트
 
@@ -524,7 +524,11 @@ class ReviewCrawler:
 
             # 첫 줄만 교체
             lines = content.split('\n')
-            lines[0] = f"총 {total_count}개의 리뷰"
+            
+            today = datetime.now().strftime("%Y.%m.%d")
+            period_str = f"({target_date}~{today})" if target_date else f"(전체~{today})"
+            
+            lines[0] = f"총 {total_count}개의 리뷰 {period_str}"
 
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(lines))
@@ -726,7 +730,7 @@ class ReviewCrawler:
                                             if date_obj < end_date_obj:
                                                 print(f"  🛑 종료 날짜 도달 ({review_date}), 수집 중단")
                                                 print(f"✅ 총 {total_count}개 리뷰 수집 완료")
-                                                self.update_review_count(output_path, total_count)
+                                                self.update_review_count(output_path, total_count, end_date)
                                                 return total_count
                                         except:
                                             pass
@@ -780,11 +784,11 @@ class ReviewCrawler:
                     continue
             
             print(f"✅ 총 {total_count}개 리뷰 수집 완료")
-            self.update_review_count(output_path, total_count)
+            self.update_review_count(output_path, total_count, end_date)
             
         except Exception as e:
             print(f"❌ 크롤링 오류: {e}")
             if total_count > 0:
-                self.update_review_count(output_path, total_count)
+                self.update_review_count(output_path, total_count, end_date)
         
         return total_count

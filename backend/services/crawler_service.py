@@ -39,6 +39,12 @@ class CrawlerService:
 
     def start_crawler_instance(self, headless: bool = False):
         """Initialize the Selenium crawler if not already running."""
+        # 기존 크롤러가 있지만 세션이 죽었는지 확인
+        if self.crawler is not None:
+            if not self.crawler.base_crawler.is_alive():
+                self.log("⚠️ Previous session is invalid (browser closed?). Restarting...")
+                self.stop_crawler_instance()
+
         if self.crawler is None:
             self.log("Initializing crawler...")
             try:
@@ -76,7 +82,7 @@ class CrawlerService:
         self.current_action = action
         self.progress = progress
 
-    def crawl_keyword(self, keyword: str, max_products: int = 10, save_format: str = "both", split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False):
+    def crawl_keyword(self, keyword: str, max_products: int = 10, save_format: str = "both", split_mode: str = "conservative", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False):
         if self.is_running:
             raise Exception("Crawler is already running")
 
@@ -110,10 +116,12 @@ class CrawlerService:
         except Exception as e:
             self.log(f"Error during crawl: {str(e)}")
             self.set_status("Error", 0.0)
+            self.stop_crawler_instance() # Force cleanup on error
         finally:
+            self.stop_crawler_instance() # Auto-close browser after task
             self.is_running = False
 
-    def crawl_url(self, url: str, product_name: Optional[str] = None, save_format: str = "both", split_mode: str = "aggressive", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False):
+    def crawl_url(self, url: str, product_name: Optional[str] = None, save_format: str = "both", split_mode: str = "conservative", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False):
         if self.is_running:
             raise Exception("Crawler is already running")
 
@@ -148,7 +156,9 @@ class CrawlerService:
         except Exception as e:
             self.log(f"Error during crawl: {str(e)}")
             self.set_status("Error", 0.0)
+            # stop_crawler_instance is now in finally
         finally:
+            self.stop_crawler_instance() # Auto-close browser after task
             self.is_running = False
 
     def get_status(self) -> Dict[str, Any]:

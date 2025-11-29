@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Olive Young Crawler Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Pretendard:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Pretendard:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Sidebar -->
@@ -18,7 +22,7 @@
                 <i class="fa-solid fa-leaf logo-icon"></i>
                 <h1>Olive Crawler</h1>
             </div>
-            
+
             <nav class="nav-menu">
                 <button class="nav-item active" data-tab="dashboard">
                     <i class="fa-solid fa-chart-pie"></i> 대시보드
@@ -50,25 +54,15 @@
                         <option value="csv">CSV Only</option>
                     </select>
                 </div>
-                <div class="setting-item">
-                    <label>이미지 병합 모드</label>
-                    <select id="common-split-mode">
-                        <option value="aggressive">색상 경계로 분할 (기본)</option>
-                        <option value="conservative">최대한 합치기</option>
-                        <option value="tile">타일 레이아웃</option>
-                    </select>
+                <div class="setting-item" id="common-review-date-container">
+                    <label style="font-size:0.85rem;">이날 부터 리뷰를 수집합니다 (YYYY-MM-DD)</label>
+                    <input type="date" id="common-review-end-date" style="font-size:0.85rem;">
                 </div>
                 <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:1rem;">
-                    <input type="checkbox" id="common-collect-reviews" style="width:auto;" onchange="toggleCommonReviewDate()" checked>
-                    <label for="common-collect-reviews" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰 텍스트 수집</label>
-                </div>
-                <div class="setting-item" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
-                    <input type="checkbox" id="common-reviews-only" style="width:auto;">
-                    <label for="common-reviews-only" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰만 수집 (이미지 건너뛰기)</label>
-                </div>
-                <div class="setting-item" id="common-review-date-container">
-                    <label style="font-size:0.85rem;">리뷰 수집 종료일</label>
-                    <input type="date" id="common-review-end-date" style="font-size:0.85rem;">
+                    <input type="checkbox" id="common-collect-reviews" style="width:auto;"
+                        onchange="toggleCommonReviewDate()" checked>
+                    <label for="common-collect-reviews" style="margin:0; cursor:pointer; font-size:0.9rem;">리뷰 텍스트
+                        수집</label>
                 </div>
             </div>
 
@@ -113,7 +107,7 @@
                                 <i class="fa-solid fa-magnifying-glass"></i>
                                 <input type="text" id="keyword-input" placeholder="예: 선크림, 라네즈...">
                             </div>
-                            
+
                             <div class="options-grid">
                                 <div class="option-item">
                                     <label>최대 상품 수</label>
@@ -133,7 +127,7 @@
                                 <i class="fa-solid fa-link"></i>
                                 <input type="text" id="url-input" placeholder="https://www.oliveyoung.co.kr/...">
                             </div>
-                            
+
                             <div class="option-item">
                                 <label>상품명 (선택사항)</label>
                                 <input type="text" id="product-name-input" placeholder="비워두면 자동 감지">
@@ -146,13 +140,23 @@
 
                         <!-- Multi-URL Form -->
                         <div id="multi-url-form" class="form-group hidden">
-                            <label>상품 URL 목록 (한 줄에 하나씩)</label>
-                            <textarea id="multi-url-input" rows="6" placeholder="https://www.oliveyoung.co.kr/...\nhttps://www.oliveyoung.co.kr/...\n..."></textarea>
-                            
+                            <label>상품 URL 목록</label>
+                            <input type="text" id="parallel-url-1" placeholder="URL 1: https://www.oliveyoung.co.kr/..."
+                                style="margin-bottom: 0.5rem;">
+                            <input type="text" id="parallel-url-2" placeholder="URL 2 (선택)"
+                                style="margin-bottom: 0.5rem;">
+                            <input type="text" id="parallel-url-3" placeholder="URL 3 (선택)"
+                                style="margin-bottom: 0.5rem;">
+                            <input type="text" id="parallel-url-4" placeholder="URL 4 (선택)"
+                                style="margin-bottom: 0.5rem;">
+                            <input type="text" id="parallel-url-5" placeholder="URL 5 (선택)"
+                                style="margin-bottom: 0.5rem;">
+
                             <div class="options-grid">
                                 <div class="option-item">
                                     <label>동시 실행 수 (최대 5)</label>
-                                    <input type="range" id="concurrency-slider" min="1" max="5" value="3" oninput="document.getElementById('concurrency-val').textContent = this.value">
+                                    <input type="range" id="concurrency-slider" min="1" max="5" value="3"
+                                        oninput="document.getElementById('concurrency-val').textContent = this.value">
                                     <span id="concurrency-val" style="font-weight:bold; color:var(--accent);">3</span>
                                 </div>
                             </div>
@@ -189,15 +193,17 @@
                     <h2>AI 리뷰/이미지 분석</h2>
                     <div class="user-profile" style="gap: 1rem;">
                         <!-- Model Selection -->
-                        <select id="ai-model-select" class="header-select" style="width: auto; padding: 0.4rem 2rem 0.4rem 1rem; font-size: 0.9rem; background-color: var(--bg-card);">
-                            <option value="gpt-5-mini">GPT-5 Mini</option>
+                        <select id="ai-model-select" class="header-select"
+                            style="width: auto; padding: 0.4rem 2rem 0.4rem 1rem; font-size: 0.9rem; background-color: var(--bg-card);">
+                            <option value="gpt-5-mini" selected>GPT-5 Mini</option>
                             <option value="gpt-4o-mini">GPT-4o Mini</option>
                             <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
                         </select>
-                        
-                        <!-- API Key (Moved to Header) -->
+
+                        <!-- API Key -->
                         <div class="input-wrapper" style="width: 200px;">
-                            <input type="password" id="openai-api-key" placeholder="API Key" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
+                            <input type="password" id="openai-api-key" placeholder="API Key"
+                                style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
                         </div>
                         <button class="btn-sm" onclick="saveConfig()" title="설정 저장">
                             <i class="fa-solid fa-floppy-disk"></i>
@@ -210,7 +216,9 @@
                     <div class="card control-bar">
                         <!-- Product Selection -->
                         <div class="control-group product-group" style="width: 100%;">
-                            <label>분석할 상품 선택 <button class="btn-sm" onclick="loadProductList()" style="float:right; padding: 2px 8px;" title="목록 새로고침"><i class="fa-solid fa-rotate-right"></i></button></label>
+                            <label>분석할 상품 선택 <button class="btn-sm" onclick="loadProductList()"
+                                    style="float:right; padding: 2px 8px;" title="목록 새로고침"><i
+                                        class="fa-solid fa-rotate-right"></i></button></label>
                             <select id="product-select" onchange="loadProductPreview()">
                                 <option value="">상품을 선택하세요...</option>
                             </select>
@@ -273,4 +281,5 @@
 
     <script src="/static/js/app.js"></script>
 </body>
+
 </html>

@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import List, Dict
 import tempfile
 import shutil
-
+import os
 
 class OliveyoungCrawler:
     """올리브영 웹사이트 크롤러"""
@@ -77,13 +77,33 @@ class OliveyoungCrawler:
 
         # 드라이버 설정 및 시작
         try:
-            service = Service(ChromeDriverManager().install())
+            # 병렬 실행 시 드라이버 설치 충돌 방지를 위한 랜덤 대기
+            if self.temp_user_data and "chrome_profile_" in self.temp_user_data:
+                import random
+                time.sleep(random.uniform(0.5, 3.0))
+
+            from webdriver_manager.chrome import ChromeDriverManager
+            driver_path = ChromeDriverManager().install()
+            
+            # WinError 193 방지: 경로가 유효한지 확인
+            if not os.path.exists(driver_path) or not driver_path.endswith('.exe'):
+                print(f"⚠️ 잘못된 드라이버 경로: {driver_path}")
+                # 기본 경로 시도 (프로젝트 폴더 내 chromedriver.exe)
+                local_driver = os.path.join(os.getcwd(), "chromedriver.exe")
+                if os.path.exists(local_driver):
+                    driver_path = local_driver
+            
+            service = Service(driver_path)
             self.driver = webdriver.Chrome(service=service, options=options)
         except Exception as e:
             print(f"❌ ChromeDriver 설치 실패: {e}")
             print("재시도 중...")
-            # Fallback: 시스템 PATH에서 chromedriver 찾기
-            self.driver = webdriver.Chrome(options=options)
+            try:
+                # Fallback: 시스템 PATH 또는 기본 설치 경로 시도
+                self.driver = webdriver.Chrome(options=options)
+            except Exception as e2:
+                print(f"❌ 브라우저 시작 치명적 오류: {e2}")
+                raise e2
 
         # WebDriver 속성 숨기기
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -95,7 +115,10 @@ class OliveyoungCrawler:
     def stop(self):
         """브라우저 종료"""
         if self.driver:
-            self.driver.quit()
+            try:
+                self.driver.quit()
+            except:
+                pass
             print("🛑 브라우저 종료")
         self.driver = None
         
@@ -107,6 +130,17 @@ class OliveyoungCrawler:
                 print(f"🗑️  프로파일 폴더 삭제: {self.temp_user_data}")
             except Exception as e:
                 print(f"⚠️  프로파일 폴더 삭제 실패: {e}")
+
+    def is_alive(self) -> bool:
+        """브라우저 세션이 유효한지 확인"""
+        if not self.driver:
+            return False
+        try:
+            # 가벼운 명령으로 세션 확인
+            _ = self.driver.window_handles
+            return True
+        except Exception:
+            return False
 
     def search_product(self, keyword: str):
         """

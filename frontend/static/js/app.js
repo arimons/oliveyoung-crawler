@@ -20,7 +20,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        
+
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
         document.getElementById(`${btn.dataset.tab}-tab`).classList.add('active');
 
@@ -33,9 +33,9 @@ document.querySelectorAll('.nav-item').forEach(btn => {
 function switchInputMode(mode) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active'); // Assumes event is available
-    
+
     const multiUrlForm = document.getElementById('multi-url-form');
-    
+
     keywordForm.classList.add('hidden');
     urlForm.classList.add('hidden');
     multiUrlForm.classList.add('hidden');
@@ -50,14 +50,21 @@ function switchInputMode(mode) {
 }
 
 async function startParallelCrawl() {
-    const urlsText = document.getElementById('multi-url-input').value;
+    // Collect URLs from 5 individual input fields
+    const urls = [
+        document.getElementById('parallel-url-1').value,
+        document.getElementById('parallel-url-2').value,
+        document.getElementById('parallel-url-3').value,
+        document.getElementById('parallel-url-4').value,
+        document.getElementById('parallel-url-5').value
+    ].map(u => u.trim()).filter(u => u); // Remove empty values
+
     const concurrency = document.getElementById('concurrency-slider').value;
-    
+
     // Common Settings
     const saveFormat = document.getElementById('common-save-format').value;
-    const splitMode = document.getElementById('common-split-mode').value;
+    const splitMode = "aggressive"; // Always aggressive
     const collectReviews = document.getElementById('common-collect-reviews').checked;
-    const reviewsOnly = document.getElementById('common-reviews-only').checked;
     let reviewEndDate = null;
 
     if (collectReviews) {
@@ -67,15 +74,8 @@ async function startParallelCrawl() {
         }
     }
 
-    if (!urlsText.trim()) {
-        alert('URL을 입력해주세요');
-        return;
-    }
-
-    const urls = urlsText.split('\n').map(u => u.trim()).filter(u => u);
-
     if (urls.length === 0) {
-        alert('유효한 URL이 없습니다');
+        alert('최소 1개의 URL을 입력해주세요');
         return;
     }
 
@@ -83,13 +83,13 @@ async function startParallelCrawl() {
         const res = await fetch(`${API_BASE}/crawl/parallel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 urls: urls,
                 concurrency: parseInt(concurrency),
                 save_format: saveFormat,
                 split_mode: splitMode,
                 collect_reviews: collectReviews,
-                reviews_only: reviewsOnly,
+                reviews_only: false, // Always false, handled by smart skip
                 review_end_date: reviewEndDate
             })
         });
@@ -100,10 +100,10 @@ async function startParallelCrawl() {
         }
 
         const data = await res.json();
-        
+
         // Start polling for parallel crawl progress
         startParallelPolling();
-        
+
     } catch (e) {
         alert(`오류: ${e.message}`);
     }
@@ -111,18 +111,18 @@ async function startParallelCrawl() {
 
 function startParallelPolling() {
     liveStatus.classList.remove('hidden');
-    
+
     const interval = setInterval(async () => {
         try {
             const res = await fetch(`${API_BASE}/crawl/parallel/status`);
             const status = await res.json();
-            
+
             // Update UI
             const pct = Math.round(status.progress * 100);
             progressBar.style.width = `${pct}%`;
             progressPercent.textContent = `${pct}%`;
             currentAction.textContent = `병렬 크롤링 중... (${status.completed_tasks}/${status.total_tasks})`;
-            
+
             if (!status.is_running && status.completed_tasks > 0) {
                 clearInterval(interval);
                 alert(`병렬 크롤링 완료!\n완료: ${status.completed_tasks}개`);
@@ -149,14 +149,14 @@ function toggleCommonReviewDate() {
 async function startKeywordCrawl() {
     const keyword = document.getElementById('keyword-input').value;
     const maxProducts = document.getElementById('max-products').value;
-    
+
     // Common Settings
     const saveFormat = document.getElementById('common-save-format').value;
-    const splitMode = document.getElementById('common-split-mode').value;
+    const splitMode = "aggressive"; // Always aggressive
     const collectReviews = document.getElementById('common-collect-reviews').checked;
-    const reviewsOnly = document.getElementById('common-reviews-only').checked;
+    // reviewsOnly removed
     let reviewEndDate = null;
-    
+
     if (collectReviews) {
         const dateInput = document.getElementById('common-review-end-date').value;
         if (dateInput) {
@@ -173,13 +173,13 @@ async function startKeywordCrawl() {
         const res = await fetch(`${API_BASE}/crawl/keyword`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                keyword, 
-                max_products: parseInt(maxProducts), 
+            body: JSON.stringify({
+                keyword,
+                max_products: parseInt(maxProducts),
                 save_format: saveFormat,
                 split_mode: splitMode,
                 collect_reviews: collectReviews,
-                reviews_only: reviewsOnly,
+                reviews_only: false,
                 review_end_date: reviewEndDate
             })
         });
@@ -198,12 +198,12 @@ async function startKeywordCrawl() {
 async function startUrlCrawl() {
     const url = document.getElementById('url-input').value;
     const productName = document.getElementById('product-name-input').value;
-    
+
     // Common Settings
     const saveFormat = document.getElementById('common-save-format').value;
-    const splitMode = document.getElementById('common-split-mode').value;
+    const splitMode = "aggressive"; // Always aggressive
     const collectReviews = document.getElementById('common-collect-reviews').checked;
-    const reviewsOnly = document.getElementById('common-reviews-only').checked;
+    // reviewsOnly removed
     let reviewEndDate = null;
 
     if (collectReviews) {
@@ -222,13 +222,13 @@ async function startUrlCrawl() {
         const res = await fetch(`${API_BASE}/crawl/url`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                url, 
-                product_name: productName || null, 
+            body: JSON.stringify({
+                url,
+                product_name: productName || null,
                 save_format: saveFormat,
                 split_mode: splitMode,
                 collect_reviews: collectReviews,
-                reviews_only: reviewsOnly,
+                reviews_only: false,
                 review_end_date: reviewEndDate
             })
         });
@@ -248,17 +248,17 @@ function startPolling() {
     if (isPolling) return;
     isPolling = true;
     liveStatus.classList.remove('hidden');
-    
+
     pollInterval = setInterval(async () => {
         try {
             const res = await fetch(`${API_BASE}/status`);
             const status = await res.json();
-            
+
             updateStatusUI(status);
 
             if (!status.is_running) {
                 stopPolling();
-                
+
                 if (status.progress >= 1.0) {
                     alert('크롤링이 완료되었습니다!');
                     loadHistory(); // Refresh history
@@ -307,7 +307,7 @@ function resetUI() {
     progressPercent.textContent = '0%';
     currentAction.textContent = '-';
     logWindow.innerHTML = '';
-    
+
     // Reset system status
     systemStatusDot.classList.remove('running');
     systemStatusText.textContent = '대기 중';
@@ -347,7 +347,7 @@ async function loadHistory() {
                 </div>
             </div>
         `).join('');
-        
+
         // Note: Image loading from local path is tricky in browser due to security.
         // We might need an endpoint to serve images or just show placeholder.
         // For now, I'll leave it as is, but in a real app we'd serve images via static route.
@@ -381,15 +381,15 @@ async function mergeHistory() {
     if (!confirm('중복된 상품 폴더를 병합하시겠습니까?\n(가장 최신 폴더를 기준으로 병합되며, 오래된 폴더는 삭제됩니다.)')) {
         return;
     }
-    
+
     const grid = document.getElementById('history-grid');
     const originalContent = grid.innerHTML;
     grid.innerHTML = '<div style="color:var(--accent); text-align:center; padding:2rem;"><i class="fa-solid fa-spinner fa-spin"></i> 병합 중입니다...</div>';
-    
+
     try {
         const res = await fetch(`${API_BASE}/history/merge`, { method: 'POST' });
         if (!res.ok) throw new Error('Merge failed');
-        
+
         const data = await res.json();
         alert(`병합 완료!\n- 병합된 그룹: ${data.merged_groups}개\n- 삭제된 폴더: ${data.deleted_folders}개`);
         loadHistory(); // Refresh list
@@ -402,18 +402,19 @@ async function mergeHistory() {
 // AI Analysis Functions
 async function loadConfig() {
     try {
+        // Load API key and model
         const res = await fetch(`${API_BASE}/config`);
         if (res.ok) {
             const config = await res.json();
             document.getElementById('openai-api-key').value = config.openai_api_key || '';
-            document.getElementById('review-prompt').value = config.review_prompt || '';
-            document.getElementById('image-prompt').value = config.image_prompt || '';
-            
-            // Set model if exists
-            if (config.model) {
-                const modelSelect = document.getElementById('ai-model-select');
-                if (modelSelect) modelSelect.value = config.model;
-            }
+        }
+
+        // Load default prompts
+        const promptsRes = await fetch(`${API_BASE}/prompts`);
+        if (promptsRes.ok) {
+            const prompts = await promptsRes.json();
+            document.getElementById('review-prompt').value = prompts.review_prompt || '';
+            document.getElementById('image-prompt').value = prompts.image_prompt || '';
         }
     } catch (e) {
         console.error('Config load failed', e);
@@ -432,7 +433,6 @@ async function saveConfig() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 openai_api_key: apiKey,
-                model: model,
                 review_prompt: reviewPrompt,
                 image_prompt: imagePrompt
             })
@@ -452,10 +452,10 @@ async function loadProductList() {
     try {
         const res = await fetch(`${API_BASE}/results`);
         const results = await res.json();
-        
+
         const select = document.getElementById('product-select');
         select.innerHTML = '<option value="">상품을 선택하세요...</option>';
-        
+
         results.forEach(item => {
             const option = document.createElement('option');
             option.value = item.folder_name;
@@ -472,6 +472,8 @@ async function analyzeReviews() {
     const prompt = document.getElementById('review-prompt').value;
     const resultArea = document.getElementById('ai-result-area');
 
+    const model = document.getElementById('ai-model-select').value;
+
     if (!productFolder) {
         alert('분석할 상품을 선택해주세요.');
         return;
@@ -485,7 +487,8 @@ async function analyzeReviews() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 product_folder: productFolder,
-                prompt: prompt
+                prompt: prompt,
+                model: model
             })
         });
 
@@ -498,7 +501,7 @@ async function analyzeReviews() {
         // Simple markdown rendering (replace newlines with <br> for now, or use a library if available)
         // For better UX, we'll just wrap in pre-wrap for now
         resultArea.innerHTML = `<div style="white-space: pre-wrap; font-family: sans-serif; line-height: 1.6;">${data.result}</div>`;
-        
+
     } catch (e) {
         resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
     }
@@ -508,6 +511,8 @@ async function analyzeImages() {
     const productFolder = document.getElementById('product-select').value;
     const prompt = document.getElementById('image-prompt').value;
     const resultArea = document.getElementById('ai-result-area');
+
+    const model = document.getElementById('ai-model-select').value;
 
     if (!productFolder) {
         alert('분석할 상품을 선택해주세요.');
@@ -522,7 +527,8 @@ async function analyzeImages() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 product_folder: productFolder,
-                prompt: prompt
+                prompt: prompt,
+                model: model
             })
         });
 
@@ -533,7 +539,7 @@ async function analyzeImages() {
 
         const data = await res.json();
         resultArea.innerHTML = `<div style="white-space: pre-wrap; font-family: sans-serif; line-height: 1.6;">${data.result}</div>`;
-        
+
     } catch (e) {
         resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
     }
