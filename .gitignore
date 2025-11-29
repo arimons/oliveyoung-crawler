@@ -16,11 +16,11 @@ show_browser.py
 merged_images_*/
 config/
 .env
-.claude
 
 # Legacy apps (deprecated)
 app.py
 app_v2.py
+_archive/
 
 # Data
 data/
@@ -33,6 +33,7 @@ data/*.csv
 config/
 *.swp
 *.swo
+.claude
 
 # OS
 .DS_Store
