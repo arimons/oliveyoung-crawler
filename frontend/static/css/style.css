@@ -1066,3 +1066,250 @@ textarea:focus {
         left: 0.5rem;
     }
 }
+
+/* Markdown Rendering Styles */
+.markdown-result {
+    font-family: 'Pretendard', sans-serif;
+    line-height: 1.6;
+    color: var(--text-main);
+    font-size: 0.95rem;
+}
+
+.markdown-result h1,
+.markdown-result h2,
+.markdown-result h3,
+.markdown-result h4,
+.markdown-result h5,
+.markdown-result h6 {
+    color: var(--primary);
+    margin: 1.5rem 0 0.8rem 0;
+    font-weight: 600;
+}
+
+.markdown-result h1 { font-size: 1.4rem; }
+.markdown-result h2 { font-size: 1.3rem; }
+.markdown-result h3 { font-size: 1.2rem; }
+.markdown-result h4 { font-size: 1.1rem; }
+
+.markdown-result p {
+    margin: 0.8rem 0;
+    color: var(--text-main);
+}
+
+.markdown-result ul,
+.markdown-result ol {
+    margin: 0.8rem 0;
+    padding-left: 1.5rem;
+}
+
+.markdown-result li {
+    margin: 0.4rem 0;
+    color: var(--text-main);
+}
+
+.markdown-result strong {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.markdown-result em {
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+.markdown-result code {
+    background-color: var(--bg-card);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+}
+
+.markdown-result pre {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+}
+
+.markdown-result pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    color: var(--text-main);
+}
+
+.markdown-result blockquote {
+    border-left: 4px solid var(--primary);
+    margin: 1rem 0;
+    padding-left: 1rem;
+    color: var(--text-muted);
+    font-style: italic;
+    background-color: rgba(139, 92, 246, 0.1);
+    padding: 0.8rem 0.8rem 0.8rem 1.2rem;
+    border-radius: 0 8px 8px 0;
+}
+
+.markdown-result table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    background-color: var(--bg-card);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.markdown-result th,
+.markdown-result td {
+    border: 1px solid var(--border);
+    padding: 0.75rem;
+    text-align: left;
+}
+
+.markdown-result th {
+    background-color: var(--primary);
+    color: white;
+    font-weight: 600;
+}
+
+.markdown-result tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.markdown-result hr {
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+    margin: 2rem 0;
+    border-radius: 1px;
+}
+
+/* Specific styling for bullet points */
+.markdown-result ul li::marker {
+    color: var(--accent);
+}
+
+.markdown-result ol li::marker {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+/* Result View Toggle */
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.result-header h3 {
+    margin: 0;
+    color: var(--text-main);
+}
+
+.view-toggle {
+    display: flex;
+    background-color: var(--bg-dark);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.toggle-btn {
+    padding: 0.4rem 0.8rem;
+    border: none;
+    background-color: transparent;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.toggle-btn:hover {
+    background-color: var(--bg-card);
+    color: var(--text-main);
+}
+
+.toggle-btn.active {
+    background-color: var(--primary);
+    color: white;
+}
+
+.toggle-btn i {
+    font-size: 0.8rem;
+}
+
+/* Text view specific styling */
+.text-result {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    line-height: 1.5;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* Prompt Header Styling */
+.prompt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+}
+
+.prompt-header label {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.analysis-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-badge-small {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.btn-xs {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border);
+    background-color: var(--bg-card);
+    color: var(--text-muted);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-xs:hover {
+    background-color: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.btn-xs i {
+    font-size: 0.7rem;
+}

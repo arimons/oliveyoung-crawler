@@ -2,10 +2,20 @@ import os
 import base64
 from typing import List, Dict, Optional
 from openai import OpenAI
+import google.generativeai as genai
 
 class AIAnalysisService:
-    def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+        self.api_key = api_key
+        self.model = model
+        
+        if model.startswith('gemini'):
+            # Configure Gemini client
+            genai.configure(api_key=api_key)
+            self.client = None  # Will use genai directly
+        else:
+            # Configure OpenAI client
+            self.client = OpenAI(api_key=api_key)
 
     def _get_token_param(self, model: str, max_tokens: int) -> Dict[str, int]:
         """
@@ -18,56 +28,153 @@ class AIAnalysisService:
 
     def analyze_reviews(self, review_text: str, prompt: str, model: str = "gpt-4o-mini") -> str:
         """
-        Analyze product reviews using OpenAI API.
+        Analyze product reviews using OpenAI or Gemini API.
         """
         try:
-            # GPT-5 models need much higher limits due to reasoning tokens
-            if model.startswith("gpt-5"):
-                max_tokens = 8000  # GPT-5 uses reasoning tokens internally
+            if model.startswith('gemini'):
+                return self._analyze_with_gemini(review_text, prompt, model)
             else:
-                max_tokens = 3000  # Other models
-                
-            token_param = self._get_token_param(model, max_tokens)
-            
-            print(f"📤 Sending to OpenAI:")
-            print(f"   Model: {model}")
-            print(f"   Prompt length: {len(prompt)} chars")
-            print(f"   Review text length: {len(review_text)} chars")
-            print(f"   Token param: {token_param}")
-            
-            response = self.client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that analyzes product reviews."},
-                    {"role": "user", "content": f"{prompt}\n\nReviews:\n{review_text}"}
-                ],
-                **token_param
-            )
-            
-            print(f"📥 OpenAI Response received:")
-            print(f"   Response ID: {response.id}")
-            print(f"   Model: {response.model}")
-            print(f"   Finish reason: {response.choices[0].finish_reason}")
-            
-            result = response.choices[0].message.content
-            # print(f"🔍 AI Response: {result[:200] if result else 'None'}...")  # Debug log removed
-            
-            if not result:
-                print(f"⚠️ Empty response details:")
-                print(f"   Full response: {response}")
-                
-            return result if result else "AI returned empty response"
+                return self._analyze_with_openai(review_text, prompt, model)
         except Exception as e:
-            print(f"❌ AI Service Error: {str(e)}")  # Debug log
+            print(f"❌ AI Service Error: {str(e)}")
             print(f"   Error type: {type(e).__name__}")
             import traceback
             print(f"   Traceback: {traceback.format_exc()}")
             return f"Error analyzing reviews: {str(e)}"
 
+    def _analyze_with_gemini(self, review_text: str, prompt: str, model: str) -> str:
+        """
+        Analyze using Gemini API
+        """
+        print(f"📤 Sending to Gemini:")
+        print(f"   Model: {model}")
+        print(f"   Prompt length: {len(prompt)} chars")
+        print(f"   Review text length: {len(review_text)} chars")
+        
+        # Create Gemini model instance
+        model_instance = genai.GenerativeModel(model)
+        
+        # Prepare the full prompt
+        full_prompt = f"You are a helpful assistant that analyzes product reviews.\n\n{prompt}\n\nReviews:\n{review_text}"
+        
+        # Generate response
+        response = model_instance.generate_content(full_prompt)
+        
+        print(f"📥 Gemini Response received:")
+        print(f"   Model: {model}")
+        print(f"   Finish reason: {response.finish_reason if hasattr(response, 'finish_reason') else 'N/A'}")
+        
+        result = response.text if response.text else None
+        
+        if not result:
+            print(f"⚠️ Empty response details:")
+            print(f"   Full response: {response}")
+            
+        return result if result else "Gemini returned empty response"
+
+    def _analyze_with_openai(self, review_text: str, prompt: str, model: str) -> str:
+        """
+        Analyze using OpenAI API
+        """
+        # GPT-5 models need much higher limits due to reasoning tokens
+        if model.startswith("gpt-5"):
+            max_tokens = 8000  # GPT-5 uses reasoning tokens internally
+        else:
+            max_tokens = 3000  # Other models
+            
+        token_param = self._get_token_param(model, max_tokens)
+        
+        print(f"📤 Sending to OpenAI:")
+        print(f"   Model: {model}")
+        print(f"   Prompt length: {len(prompt)} chars")
+        print(f"   Review text length: {len(review_text)} chars")
+        print(f"   Token param: {token_param}")
+        
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that analyzes product reviews."},
+                {"role": "user", "content": f"{prompt}\n\nReviews:\n{review_text}"}
+            ],
+            **token_param
+        )
+        
+        print(f"📥 OpenAI Response received:")
+        print(f"   Response ID: {response.id}")
+        print(f"   Model: {response.model}")
+        print(f"   Finish reason: {response.choices[0].finish_reason}")
+        
+        result = response.choices[0].message.content
+        
+        if not result:
+            print(f"⚠️ Empty response details:")
+            print(f"   Full response: {response}")
+            
+        return result if result else "OpenAI returned empty response"
+
     def analyze_images(self, image_paths: List[str], prompt: str, model: str = "gpt-4o-mini") -> str:
         """
-        Analyze product images using OpenAI API.
+        Analyze product images using OpenAI or Gemini API.
         Splits long vertical images into chunks to avoid resolution loss.
+        """
+        try:
+            if model.startswith('gemini'):
+                return self._analyze_images_with_gemini(image_paths, prompt, model)
+            else:
+                return self._analyze_images_with_openai(image_paths, prompt, model)
+        except Exception as e:
+            print(f"❌ AI Service Error: {str(e)}")
+            print(f"   Error type: {type(e).__name__}")
+            import traceback
+            print(f"   Traceback: {traceback.format_exc()}")
+            return f"Error analyzing images: {str(e)}"
+
+    def _analyze_images_with_gemini(self, image_paths: List[str], prompt: str, model: str) -> str:
+        """
+        Analyze images using Gemini API
+        """
+        from PIL import Image
+        
+        print(f"📤 Sending to Gemini (Image Analysis):")
+        print(f"   Model: {model}")
+        print(f"   Prompt length: {len(prompt)} chars")
+        print(f"   Image count: {len(image_paths[:5])}")
+        
+        # Create Gemini model instance
+        model_instance = genai.GenerativeModel(model)
+        
+        # Prepare content with images
+        content = [prompt]
+        
+        for img_path in image_paths[:5]:  # Limit to 5 images
+            if os.path.exists(img_path):
+                try:
+                    # Load and add image
+                    img = Image.open(img_path)
+                    if img.mode in ('RGBA', 'P'):
+                        img = img.convert('RGB')
+                    content.append(img)
+                except Exception as e:
+                    print(f"⚠️ Failed to process image {img_path}: {e}")
+        
+        # Generate response
+        response = model_instance.generate_content(content)
+        
+        print(f"📥 Gemini Response received:")
+        print(f"   Model: {model}")
+        print(f"   Finish reason: {response.finish_reason if hasattr(response, 'finish_reason') else 'N/A'}")
+        
+        result = response.text if response.text else None
+        
+        if not result:
+            print(f"⚠️ Empty response details:")
+            print(f"   Full response: {response}")
+            
+        return result if result else "Gemini returned empty response"
+
+    def _analyze_images_with_openai(self, image_paths: List[str], prompt: str, model: str) -> str:
+        """
+        Analyze images using OpenAI API
         """
         try:
             from PIL import Image

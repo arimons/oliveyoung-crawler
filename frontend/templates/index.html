@@ -12,6 +12,7 @@
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 
 <body>
@@ -209,20 +210,30 @@
                 <header class="top-bar">
                     <h2>AI 리뷰/이미지 분석</h2>
                     <div class="user-profile" style="gap: 1rem;">
-                        <!-- Model Selection -->
-                        <select id="ai-model-select" class="header-select"
-                            style="width: auto; padding: 0.4rem 2rem 0.4rem 1rem; font-size: 0.9rem; background-color: var(--bg-card);">
-                            <option value="gpt-5-mini" selected>GPT-5 Mini</option>
-                            <option value="gpt-4o-mini">GPT-4o Mini</option>
-                            <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
-                        </select>
-
+                        <!-- Model Selection with Status -->
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div class="api-status-indicators" style="display: flex; flex-direction: column; gap: 2px;">
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <span id="gemini-status" class="status-badge" style="font-size: 0.7rem; padding: 1px 4px; border-radius: 3px; background: #ccc; color: white;">GEMINI</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <span id="openai-status" class="status-badge" style="font-size: 0.7rem; padding: 1px 4px; border-radius: 3px; background: #ccc; color: white;">OPENAI</span>
+                                </div>
+                            </div>
+                            <select id="ai-model-select" class="header-select" onchange="updateApiKeyInput()"
+                                style="width: auto; padding: 0.4rem 2rem 0.4rem 1rem; font-size: 0.9rem; background-color: var(--bg-card);">
+                                <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash</option>
+                                <option value="gpt-5-mini">GPT-5 Mini</option>
+                                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                            </select>
+                        </div>
+                        
                         <!-- API Key -->
                         <div class="input-wrapper" style="width: 200px;">
-                            <input type="password" id="openai-api-key" placeholder="API Key"
+                            <input type="password" id="api-key-input" placeholder="API Key 입력"
                                 style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
                         </div>
-                        <button class="btn-sm" onclick="saveConfig()" title="설정 저장">
+                        <button class="btn-sm" onclick="saveApiKey()" title="API Key 저장 (.env)">
                             <i class="fa-solid fa-floppy-disk"></i>
                         </button>
                     </div>
@@ -246,7 +257,14 @@
                     <div class="prompts-grid">
                         <!-- Review Analysis Column -->
                         <div class="card prompt-card">
-                            <label>텍스트 리뷰 프롬프트</label>
+                            <div class="prompt-header">
+                                <label>텍스트 리뷰 프롬프트</label>
+                                <div class="analysis-status">
+                                    <span id="review-status-badge" class="status-badge-small" style="display: none;">
+                                        <i class="fa-solid fa-file-check"></i> 기존 분석 로드됨
+                                    </span>
+                                </div>
+                            </div>
                             <textarea id="review-prompt" placeholder="리뷰 분석을 위한 프롬프트를 입력하세요..."></textarea>
                             <button class="btn-primary" onclick="analyzeReviews()">
                                 <i class="fa-solid fa-comment-dots"></i> 리뷰 분석
@@ -255,7 +273,14 @@
 
                         <!-- Image Analysis Column -->
                         <div class="card prompt-card">
-                            <label>이미지 분석 프롬프트</label>
+                            <div class="prompt-header">
+                                <label>이미지 분석 프롬프트</label>
+                                <div class="analysis-status">
+                                    <span id="image-status-badge" class="status-badge-small" style="display: none;">
+                                        <i class="fa-solid fa-image"></i> 기존 분석 로드됨
+                                    </span>
+                                </div>
+                            </div>
                             <textarea id="image-prompt" placeholder="이미지 분석을 위한 프롬프트를 입력하세요..."></textarea>
                             <button class="btn-primary" onclick="analyzeImages()">
                                 <i class="fa-solid fa-image"></i> 이미지 분석
@@ -265,7 +290,17 @@
 
                     <!-- Results Section -->
                     <div class="card result-card">
-                        <h3>분석 결과</h3>
+                        <div class="result-header">
+                            <h3>분석 결과</h3>
+                            <div class="view-toggle">
+                                <button id="text-view-btn" class="toggle-btn" onclick="switchToTextView()">
+                                    <i class="fa-solid fa-file-lines"></i> Text
+                                </button>
+                                <button id="markdown-view-btn" class="toggle-btn active" onclick="switchToMarkdownView()">
+                                    <i class="fa-solid fa-code"></i> Markdown
+                                </button>
+                            </div>
+                        </div>
                         <div id="ai-result-area" class="markdown-body">
                             <div class="placeholder-text">
                                 분석 결과가 여기에 표시됩니다.

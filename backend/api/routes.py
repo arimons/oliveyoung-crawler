@@ -23,13 +23,139 @@ history_service = HistoryService()
 config_manager = ConfigManager()
 
 # Pydantic Models
-class ConfigRequest(BaseModel):
-    openai_api_key: Optional[str] = None
-
 class AnalysisRequest(BaseModel):
     product_folder: str
-    prompt: Optional[str] = None
+    prompt: str  # Required - comes from frontend
     model: Optional[str] = "gpt-4o-mini"
+
+class APIKeyRequest(BaseModel):
+    key: str
+    model: str
+
+@router.get("/analyze/{product_folder}/status")
+async def get_analysis_status(product_folder: str):
+    """
+    Check if analysis files exist for a product folder
+    """
+    data_dir = os.path.join(os.getcwd(), "data")
+    folder_path = os.path.join(data_dir, product_folder)
+    
+    if not os.path.exists(folder_path):
+        raise HTTPException(status_code=404, detail="Product folder not found")
+    
+    review_analysis_file = os.path.join(folder_path, "review_analysis.txt")
+    image_analysis_file = os.path.join(folder_path, "image_analysis.txt")
+    
+    status = {
+        "review_analysis": {
+            "exists": os.path.exists(review_analysis_file),
+            "file_path": review_analysis_file if os.path.exists(review_analysis_file) else None,
+            "modified": None
+        },
+        "image_analysis": {
+            "exists": os.path.exists(image_analysis_file),
+            "file_path": image_analysis_file if os.path.exists(image_analysis_file) else None,
+            "modified": None
+        }
+    }
+    
+    # Add modification times if files exist
+    if status["review_analysis"]["exists"]:
+        mod_time = os.path.getmtime(review_analysis_file)
+        status["review_analysis"]["modified"] = mod_time
+        
+    if status["image_analysis"]["exists"]:
+        mod_time = os.path.getmtime(image_analysis_file)
+        status["image_analysis"]["modified"] = mod_time
+    
+    return status
+
+@router.get("/analyze/{product_folder}/load/{analysis_type}")
+async def load_analysis_result(product_folder: str, analysis_type: str):
+    """
+    Load existing analysis result file content
+    analysis_type: 'review' or 'image'
+    """
+    if analysis_type not in ['review', 'image']:
+        raise HTTPException(status_code=400, detail="analysis_type must be 'review' or 'image'")
+        
+    data_dir = os.path.join(os.getcwd(), "data")
+    folder_path = os.path.join(data_dir, product_folder)
+    
+    if not os.path.exists(folder_path):
+        raise HTTPException(status_code=404, detail="Product folder not found")
+    
+    file_name = f"{analysis_type}_analysis.txt"
+    file_path = os.path.join(folder_path, file_name)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"{analysis_type} analysis file not found")
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Extract just the analysis result (skip the header metadata)
+        lines = content.split('\n')
+        result_start = -1
+        
+        for i, line in enumerate(lines):
+            if '=' * 40 in line:  # Find the separator line
+                result_start = i + 1
+                break
+        
+        if result_start > 0 and result_start < len(lines):
+            result_content = '\n'.join(lines[result_start:]).strip()
+        else:
+            result_content = content.strip()
+            
+        return {
+            "content": result_content,
+            "file_path": file_path,
+            "type": analysis_type
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read analysis file: {str(e)}")
+
+@router.get("/config/keys/status")
+async def get_api_keys_status():
+    """
+    Get API keys status (masked if exists, empty if not)
+    """
+    openai_key = config_manager.get_api_key('gpt-4o-mini')
+    google_key = config_manager.get_api_key('gemini-2.5-flash')
+    
+    def mask_key(key: str) -> str:
+        if not key or len(key) < 8:
+            return ""
+        return key[:6] + "*" * (len(key) - 12) + key[-6:] if len(key) > 12 else key[:3] + "*" * 5
+    
+    return {
+        "openai": {
+            "exists": bool(openai_key),
+            "masked": mask_key(openai_key) if openai_key else ""
+        },
+        "google": {
+            "exists": bool(google_key), 
+            "masked": mask_key(google_key) if google_key else ""
+        }
+    }
+
+@router.post("/config/key")
+async def save_api_key(request: APIKeyRequest):
+    # Determine key name based on model
+    if request.model.startswith('gemini'):
+        key_name = 'GOOGLE_API_KEY'
+    else:
+        key_name = 'OPENAI_API_KEY'
+        
+    success = config_manager.save_api_key(key_name, request.key)
+    
+    if success:
+        return {"status": "success", "message": f"{key_name} saved to .env"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save API key")
 
 # Helper Functions
 def clean_oliveyoung_url(url: str) -> str:
@@ -346,42 +472,16 @@ async def get_history_detail(folder_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Configuration Endpoints
-@router.get("/config")
-async def get_config():
-    config = config_manager.load_config()
-    if config.get("openai_api_key"):
-        key = config["openai_api_key"]
-        if len(key) > 10:
-            config["openai_api_key"] = key[:3] + "..." + key[-4:]
-    return config
-
-@router.post("/config")
-async def save_config(request: ConfigRequest):
-    print(f"💾 Saving config: api_key={'SET' if request.openai_api_key else 'EMPTY'}")
-    config_manager.save_config({
-        "openai_api_key": request.openai_api_key
-    })
-    print(f"✅ Config saved successfully")
-    return {"message": "Configuration saved"}
-
-@router.get("/prompts")
-async def get_prompts():
-    """Get default prompts"""
-    return config_manager.get_default_prompts()
 
 # AI Analysis Endpoints
 @router.post("/analyze/reviews")
 async def analyze_reviews(request: AnalysisRequest):
-    config = config_manager.load_config()
-    api_key = config.get("openai_api_key")
-    model = request.model or 'gpt-4o-mini'
-    
-    prompts = config_manager.get_default_prompts()
-    default_prompt = prompts['review_prompt']
+    api_key = config_manager.get_api_key(request.model or 'gemini-2.5-flash')
+    model = request.model or 'gemini-2.5-flash'
     
     if not api_key:
-        raise HTTPException(status_code=400, detail="OpenAI API Key is required")
+        model_type = 'GOOGLE_API_KEY' if model.startswith('gemini') else 'OPENAI_API_KEY'
+        raise HTTPException(status_code=400, detail=f"API Key not found. Please set {model_type} in .env file")
         
     data_dir = os.path.join(os.getcwd(), "data")
     folder_path = os.path.join(data_dir, request.product_folder)
@@ -428,8 +528,8 @@ async def analyze_reviews(request: AnalysisRequest):
     # Call AI Service
     try:
         print(f"🚀 Calling AI Service with model: {model}")
-        ai_service = AIAnalysisService(api_key)
-        result = ai_service.analyze_reviews(full_text, request.prompt or default_prompt, model=model)
+        ai_service = AIAnalysisService(api_key, model)
+        result = ai_service.analyze_reviews(full_text, request.prompt, model=model)
         print(f"✅ AI Analysis complete. Result length: {len(result)}")
         
         # Save result to file
@@ -454,15 +554,12 @@ async def analyze_reviews(request: AnalysisRequest):
 @router.post("/analyze/images")
 async def analyze_images(request: AnalysisRequest):
     print(f"🔍 Analyzing images for folder: {request.product_folder}")
-    config = config_manager.load_config()
-    api_key = config.get("openai_api_key")
-    model = request.model or 'gpt-4o-mini'
-    
-    prompts = config_manager.get_default_prompts()
-    default_prompt = prompts['image_prompt']
+    api_key = config_manager.get_api_key(request.model or 'gemini-2.5-flash')
+    model = request.model or 'gemini-2.5-flash'
     
     if not api_key:
-        raise HTTPException(status_code=400, detail="OpenAI API Key is required")
+        model_type = 'GOOGLE_API_KEY' if model.startswith('gemini') else 'OPENAI_API_KEY'
+        raise HTTPException(status_code=400, detail=f"API Key not found. Please set {model_type} in .env file")
         
     data_dir = os.path.join(os.getcwd(), "data")
     folder_path = os.path.join(data_dir, request.product_folder)
@@ -504,8 +601,8 @@ async def analyze_images(request: AnalysisRequest):
         
     print(f"🚀 Calling AI Service with {len(image_paths)} images")
     try:
-        ai_service = AIAnalysisService(api_key)
-        result = ai_service.analyze_images(image_paths, request.prompt or default_prompt, model=model)
+        ai_service = AIAnalysisService(api_key, model)
+        result = ai_service.analyze_images(image_paths, request.prompt, model=model)
         print("✅ Image analysis complete")
         
         # Save result to file

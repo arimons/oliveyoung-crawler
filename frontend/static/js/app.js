@@ -1,8 +1,52 @@
 const API_BASE = '/api';
 
+// Default Prompts (hardcoded in frontend)
+const DEFAULT_REVIEW_PROMPT = `당신은 화장품 마케팅 전문가입니다. 아래 리뷰 데이터를 보고 다음을 분석해주세요:
+
+1. 고객이 가장 선호하는 제품 특징
+2. 개선이 필요한 부분
+3. 리뷰에서 반복적으로 등장하는 핵심 키워드
+4. 마케팅 메시지에 활용 가능한 표현이나 문구
+5. 제품 경쟁력 포인트 요약
+
+각 항목을 명확한 제목과 함께 글머리 기호(•)를 사용한 목록 형식으로 정리해주세요. 
+표는 사용하지 마세요.
+요청한 분석만 제공하고, 추가 제안이나 질문은 하지 마세요.`;
+
+const DEFAULT_IMAGE_PROMPT = `당신은 화장품 연구원입니다. 제품 상세 이미지를 분석하여 다음 4가지 핵심 정보를 추출해주세요.
+
+**1. 원포인트 (One-Point)**
+• 제품을 한마디로 정의하는 메인 카피나 슬로건
+• 가장 강조하고 있는 핵심 컨셉
+
+**2. 임상 (Clinical)**
+• 효능/효과를 객관적으로 입증하는 임상 시험 결과를 **누락없이** 모두 추출
+• 구체적인 수치(%, 개선율, 만족도, 배 증가 등)가 있다면 **반드시 포함**
+• **시간 정보 필수**: "사용 전", "사용 직후", "즉시", "1회 사용 후", "X일 후", "X주 후", "X개월 사용" 등 측정 시점이 명시된 경우 **반드시 함께 기록**
+• 예시: "사용 2주 후 주름 개선 87%", "즉시 보습력 120% 증가", "4주 사용 후 탄력 개선"
+• "검증된", "테스트 완료", "임상 실험", "피부과 테스트" 등의 문구 확인
+• ⚠️ **제외**: 단순 가격, 용량, 할인율, 세트 구성 등 판매 정보는 제외
+
+**3. 소재 (Material)**
+• 제품만의 특별한 성분이나 기술력
+• 특허 성분, 독자 개발 원료 등 차별화된 소재 정보
+
+**4. 리뷰 (Review)**
+• 상세 페이지 내에 판매자가 선별하여 포함시킨 'Best 리뷰'나 '사용자 후기' 내용
+• 실제 사용자의 목소리로 강조된 포인트
+
+**주의사항:**
+- 제품명, 가격, 용량, 1+1 구성 등 단순 판매 정보는 제외하세요.
+- 수치는 '효능 입증'과 관련된 것만 기록하세요.
+- 각 항목은 글머리 기호(•)로 정리해주세요.
+- 표는 사용하지 마세요.
+- 분석이 불가능한 항목은 "정보 없음"으로 표시하세요.`;
+
 // State
 let isPolling = false;
 let pollInterval = null;
+let currentAnalysisResult = ''; // Store current analysis result
+let currentViewMode = 'markdown'; // 'text' or 'markdown'
 
 // Helper Functions
 function compressOliveyoungUrl(url) {
@@ -678,52 +722,10 @@ async function mergeHistory() {
 }
 
 // AI Analysis Functions
-async function loadConfig() {
-    try {
-        // Load API key and model
-        const res = await fetch(`${API_BASE}/config`);
-        if (res.ok) {
-            const config = await res.json();
-            document.getElementById('openai-api-key').value = config.openai_api_key || '';
-        }
-
-        // Load default prompts
-        const promptsRes = await fetch(`${API_BASE}/prompts`);
-        if (promptsRes.ok) {
-            const prompts = await promptsRes.json();
-            document.getElementById('review-prompt').value = prompts.review_prompt || '';
-            document.getElementById('image-prompt').value = prompts.image_prompt || '';
-        }
-    } catch (e) {
-        console.error('Config load failed', e);
-    }
-}
-
-async function saveConfig() {
-    const apiKey = document.getElementById('openai-api-key').value;
-    const reviewPrompt = document.getElementById('review-prompt').value;
-    const imagePrompt = document.getElementById('image-prompt').value;
-    const model = document.getElementById('ai-model-select').value;
-
-    try {
-        const res = await fetch(`${API_BASE}/config`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                openai_api_key: apiKey,
-                review_prompt: reviewPrompt,
-                image_prompt: imagePrompt
-            })
-        });
-
-        if (res.ok) {
-            alert('설정이 저장되었습니다.');
-        } else {
-            alert('설정 저장 실패');
-        }
-    } catch (e) {
-        alert('설정 저장 중 오류 발생: ' + e.message);
-    }
+function initializePrompts() {
+    // Set prompts from hardcoded constants
+    document.getElementById('review-prompt').value = DEFAULT_REVIEW_PROMPT;
+    document.getElementById('image-prompt').value = DEFAULT_IMAGE_PROMPT;
 }
 
 async function loadProductList() {
@@ -776,9 +778,13 @@ async function analyzeReviews() {
         }
 
         const data = await res.json();
-        // Simple markdown rendering (replace newlines with <br> for now, or use a library if available)
-        // For better UX, we'll just wrap in pre-wrap for now
-        resultArea.innerHTML = `<div style="white-space: pre-wrap; font-family: sans-serif; line-height: 1.6;">${data.result}</div>`;
+        // Store result for view switching
+        currentAnalysisResult = data.result;
+        // Render based on current view mode
+        renderResult();
+        
+        // Update analysis status after successful analysis
+        setTimeout(loadProductPreview, 1000); // Delay to ensure file is saved
 
     } catch (e) {
         resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
@@ -816,20 +822,201 @@ async function analyzeImages() {
         }
 
         const data = await res.json();
-        resultArea.innerHTML = `<div style="white-space: pre-wrap; font-family: sans-serif; line-height: 1.6;">${data.result}</div>`;
+        // Store result for view switching
+        currentAnalysisResult = data.result;
+        // Render based on current view mode
+        renderResult();
+        
+        // Update analysis status after successful analysis
+        setTimeout(loadProductPreview, 1000); // Delay to ensure file is saved
 
     } catch (e) {
         resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
     }
 }
 
-function loadProductPreview() {
-    // Optional: Show selected product thumbnail or info
+async function loadProductPreview() {
+    const productFolder = document.getElementById('product-select').value;
+    
+    if (!productFolder) {
+        // Hide analysis status indicators when no product selected
+        hideAnalysisStatus();
+        clearAnalysisResults();
+        return;
+    }
+    
+    // Check if existing analysis files exist and auto-load if available
+    try {
+        const res = await fetch(`${API_BASE}/analyze/${productFolder}/status`);
+        if (res.ok) {
+            const status = await res.json();
+            await autoLoadAnalysisIfExists(status);
+        } else {
+            hideAnalysisStatus();
+            clearAnalysisResults();
+        }
+    } catch (e) {
+        console.error('Failed to check analysis status:', e);
+        hideAnalysisStatus();
+        clearAnalysisResults();
+    }
+}
+
+async function autoLoadAnalysisIfExists(status) {
+    let loadedAny = false;
+    
+    // Priority: Load review first, then image if no review exists
+    if (status.review_analysis.exists) {
+        try {
+            await loadExistingAnalysisQuiet('review');
+            updateAnalysisStatus(status, 'review');
+            loadedAny = true;
+        } catch (e) {
+            console.error('Failed to auto-load review analysis:', e);
+        }
+    } else if (status.image_analysis.exists) {
+        try {
+            await loadExistingAnalysisQuiet('image');
+            updateAnalysisStatus(status, 'image');
+            loadedAny = true;
+        } catch (e) {
+            console.error('Failed to auto-load image analysis:', e);
+        }
+    }
+    
+    if (!loadedAny) {
+        hideAnalysisStatus();
+        clearAnalysisResults();
+    }
+}
+
+function clearAnalysisResults() {
+    currentAnalysisResult = '';
+    const resultArea = document.getElementById('ai-result-area');
+    resultArea.innerHTML = '<div class="placeholder-text">분석 결과가 여기에 표시됩니다.</div>';
+}
+
+function updateAnalysisStatus(status, loadedType = null) {
+    const reviewBadge = document.getElementById('review-status-badge');
+    const imageBadge = document.getElementById('image-status-badge');
+    
+    // Show badge for the loaded analysis type
+    if (loadedType === 'review') {
+        reviewBadge.style.display = 'flex';
+        imageBadge.style.display = 'none';
+    } else if (loadedType === 'image') {
+        reviewBadge.style.display = 'none';
+        imageBadge.style.display = 'flex';
+    } else {
+        // Hide all if nothing loaded
+        reviewBadge.style.display = 'none';
+        imageBadge.style.display = 'none';
+    }
+}
+
+function hideAnalysisStatus() {
+    document.getElementById('review-status-badge').style.display = 'none';
+    document.getElementById('image-status-badge').style.display = 'none';
+}
+
+async function loadExistingAnalysisQuiet(analysisType) {
+    const productFolder = document.getElementById('product-select').value;
+    
+    if (!productFolder) {
+        throw new Error('No product selected');
+    }
+    
+    const res = await fetch(`${API_BASE}/analyze/${productFolder}/load/${analysisType}`);
+    
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail);
+    }
+    
+    const data = await res.json();
+    
+    // Store result for view switching
+    currentAnalysisResult = data.content;
+    // Render based on current view mode
+    renderResult();
+    
+    return data;
+}
+
+async function loadExistingAnalysis(analysisType) {
+    const resultArea = document.getElementById('ai-result-area');
+    
+    try {
+        resultArea.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> 기존 분석 결과를 불러오는 중...</div>';
+        
+        await loadExistingAnalysisQuiet(analysisType);
+        
+        // Show success notification
+        const typeText = analysisType === 'review' ? '리뷰' : '이미지';
+        showNotification(`기존 ${typeText} 분석 결과를 불러왔습니다.`, 'success');
+        
+    } catch (e) {
+        resultArea.innerHTML = `<div style="color:var(--danger)">기존 분석 결과 로드 실패: ${e.message}</div>`;
+        showNotification(`분석 결과 로드 실패: ${e.message}`, 'error');
+    }
+}
+
+// View toggle functions
+function switchToTextView() {
+    currentViewMode = 'text';
+    updateToggleButtons();
+    renderResult();
+}
+
+function switchToMarkdownView() {
+    currentViewMode = 'markdown';
+    updateToggleButtons();
+    renderResult();
+}
+
+function updateToggleButtons() {
+    const textBtn = document.getElementById('text-view-btn');
+    const markdownBtn = document.getElementById('markdown-view-btn');
+    
+    if (currentViewMode === 'text') {
+        textBtn.classList.add('active');
+        markdownBtn.classList.remove('active');
+    } else {
+        textBtn.classList.remove('active');
+        markdownBtn.classList.add('active');
+    }
+}
+
+function renderResult() {
+    const resultArea = document.getElementById('ai-result-area');
+    
+    if (!currentAnalysisResult) {
+        resultArea.innerHTML = '<div class="placeholder-text">분석 결과가 여기에 표시됩니다.</div>';
+        return;
+    }
+    
+    if (currentViewMode === 'text') {
+        // Text view with preserved line breaks
+        resultArea.innerHTML = `<div class="text-result">${currentAnalysisResult}</div>`;
+    } else {
+        // Markdown view with improved bullet point formatting
+        let processedContent = currentAnalysisResult;
+        
+        // Improve bullet point formatting: Add line breaks before bullet points that are on the same line
+        // This handles cases like: "• item1 • item2 • item3" -> "• item1\n• item2\n• item3"
+        processedContent = processedContent.replace(/(\S)\s*•\s*/g, '$1\n• ');
+        
+        // Also handle cases where bullets start a line but are concatenated
+        processedContent = processedContent.replace(/^•\s*/gm, '• ');
+        
+        const htmlContent = marked.parse(processedContent);
+        resultArea.innerHTML = `<div class="markdown-result">${htmlContent}</div>`;
+    }
 }
 
 // Initial load
 loadHistory();
-loadConfig();
+initializePrompts();
 loadProductList();
 
 // Set default review end date to 1 week ago
@@ -842,6 +1029,173 @@ function setDefaultReviewDate() {
 
 setDefaultReviewDate();
 
-// Refresh product list when switching to AI tab
-document.querySelector('button[data-tab="ai"]').addEventListener('click', loadProductList);
+// API Key Management
+let apiKeysCache = {};
+
+async function loadApiKeysStatus() {
+    try {
+        const res = await fetch(`${API_BASE}/config/keys/status`);
+        if (!res.ok) throw new Error('Failed to load API keys status');
+        
+        apiKeysCache = await res.json();
+        updateApiKeyStatusUI();
+        updateApiKeyInput(); // Load current model's API key
+    } catch (e) {
+        console.error('Failed to load API keys status:', e);
+    }
+}
+
+function updateApiKeyStatusUI() {
+    const geminiStatus = document.getElementById('gemini-status');
+    const openaiStatus = document.getElementById('openai-status');
+    
+    // Update Gemini status
+    if (apiKeysCache.google && apiKeysCache.google.exists) {
+        geminiStatus.textContent = 'GEMINI OK';
+        geminiStatus.style.background = '#28a745'; // Green
+    } else {
+        geminiStatus.textContent = 'GEMINI';
+        geminiStatus.style.background = '#6c757d'; // Gray
+    }
+    
+    // Update OpenAI status
+    if (apiKeysCache.openai && apiKeysCache.openai.exists) {
+        openaiStatus.textContent = 'OPENAI OK';
+        openaiStatus.style.background = '#28a745'; // Green
+    } else {
+        openaiStatus.textContent = 'OPENAI';
+        openaiStatus.style.background = '#6c757d'; // Gray
+    }
+}
+
+function updateApiKeyInput() {
+    const model = document.getElementById('ai-model-select').value;
+    const apiKeyInput = document.getElementById('api-key-input');
+    
+    if (model.startsWith('gemini')) {
+        // Show masked Gemini key
+        if (apiKeysCache.google && apiKeysCache.google.masked) {
+            apiKeyInput.value = apiKeysCache.google.masked;
+            apiKeyInput.placeholder = "Google API Key";
+        } else {
+            apiKeyInput.value = '';
+            apiKeyInput.placeholder = "Google API Key 입력";
+        }
+    } else {
+        // Show masked OpenAI key
+        if (apiKeysCache.openai && apiKeysCache.openai.masked) {
+            apiKeyInput.value = apiKeysCache.openai.masked;
+            apiKeyInput.placeholder = "OpenAI API Key";
+        } else {
+            apiKeyInput.value = '';
+            apiKeyInput.placeholder = "OpenAI API Key 입력";
+        }
+    }
+}
+
+async function saveApiKey() {
+    const model = document.getElementById('ai-model-select').value;
+    const apiKey = document.getElementById('api-key-input').value.trim();
+    
+    if (!apiKey) {
+        showNotification('API Key를 입력해주세요.', 'error');
+        return;
+    }
+    
+    // Skip if the value is a masked key
+    if (apiKey.includes('*')) {
+        showNotification('새 API Key를 입력해주세요. (마스킹된 키는 저장할 수 없습니다)', 'error');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`${API_BASE}/config/key`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: model,
+                key: apiKey
+            })
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail);
+        }
+        
+        const data = await res.json();
+        showNotification(`API Key가 성공적으로 저장되었습니다! (${model.startsWith('gemini') ? 'GOOGLE_API_KEY' : 'OPENAI_API_KEY'})`, 'success');
+        
+        // Clear input field to prevent accidental re-saves
+        document.getElementById('api-key-input').value = '';
+        
+        // Reload status after saving with a slight delay to ensure server processes the change
+        setTimeout(async () => {
+            await loadApiKeysStatus();
+            // Show updated masked key
+            updateApiKeyInput();
+        }, 500);
+        
+    } catch (e) {
+        showNotification(`API Key 저장 실패: ${e.message}`, 'error');
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 6px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        transition: all 0.3s ease;
+    `;
+    
+    // Set color based on type
+    switch(type) {
+        case 'success':
+            notification.style.background = '#28a745';
+            break;
+        case 'error':
+            notification.style.background = '#dc3545';
+            break;
+        case 'warning':
+            notification.style.background = '#ffc107';
+            notification.style.color = '#212529';
+            break;
+        default:
+            notification.style.background = '#17a2b8';
+    }
+    
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    // Remove after 4 seconds
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, 4000);
+}
+
+// Refresh product list when switching to AI tab and load API keys
+document.querySelector('button[data-tab="ai"]').addEventListener('click', () => {
+    loadProductList();
+    // Force reload API keys status to get latest from .env
+    setTimeout(loadApiKeysStatus, 100); // Small delay to ensure UI is ready
+});
+
+// Load API keys on page load
+document.addEventListener('DOMContentLoaded', loadApiKeysStatus);
 
