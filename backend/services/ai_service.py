@@ -132,8 +132,11 @@ class AIAnalysisService:
     def _analyze_images_with_gemini(self, image_paths: List[str], prompt: str, model: str) -> str:
         """
         Analyze images using Gemini API
+        Splits long vertical images (height > 3000px) into chunks to fit Gemini's 3072x3072 limit
+        NO RESIZING - only splits to preserve image detail
         """
         from PIL import Image
+        import io
         
         print(f"📤 Sending to Gemini (Image Analysis):")
         print(f"   Model: {model}")
@@ -145,17 +148,76 @@ class AIAnalysisService:
         
         # Prepare content with images
         content = [prompt]
+        processed_count = 0
         
         for img_path in image_paths[:5]:  # Limit to 5 images
             if os.path.exists(img_path):
                 try:
-                    # Load and add image
-                    img = Image.open(img_path)
-                    if img.mode in ('RGBA', 'P'):
-                        img = img.convert('RGB')
-                    content.append(img)
+                    with Image.open(img_path) as img:
+                        # Convert to RGB if needed
+                        if img.mode in ('RGBA', 'P'):
+                            img = img.convert('RGB')
+                        
+                        width, height = img.size
+                        
+                        # Split long images (height > 3000px for Gemini's 3072x3072 limit)
+                        if height > 3000:
+                            chunk_height = 3000
+                            overlap = 200
+                            current_y = 0
+                            chunk_count = 0
+                            
+                            while current_y < height:
+                                # Calculate chunk end
+                                end_y = min(current_y + chunk_height, height)
+                                
+                                # Crop chunk
+                                chunk = img.crop((0, current_y, width, end_y))
+                                
+                                # Convert chunk to bytes for Gemini
+                                buffered = io.BytesIO()
+                                chunk.save(buffered, format="JPEG", quality=85, optimize=True)
+                                file_size_mb = len(buffered.getvalue()) / (1024 * 1024)
+                                
+                                # Reload from bytes
+                                buffered.seek(0)
+                                processed_chunk = Image.open(buffered)
+                                
+                                content.append(processed_chunk)
+                                chunk_count += 1
+                                processed_count += 1
+                                
+                                print(f"   ✂️ Split chunk {chunk_count}: y={current_y}-{end_y}, size={file_size_mb:.2f}MB")
+                                
+                                # Move to next chunk with overlap
+                                if end_y == height:
+                                    break
+                                current_y += (chunk_height - overlap)
+                                
+                                # Safety limit for chunks per image
+                                if chunk_count > 30:
+                                    print(f"   ⚠️ Reached chunk limit (30) for image")
+                                    break
+                        else:
+                            # Image is small enough, send as is with compression
+                            buffered = io.BytesIO()
+                            img.save(buffered, format="JPEG", quality=85, optimize=True)
+                            file_size_mb = len(buffered.getvalue()) / (1024 * 1024)
+                            
+                            # Reload from bytes
+                            buffered.seek(0)
+                            processed_img = Image.open(buffered)
+                            
+                            content.append(processed_img)
+                            processed_count += 1
+                            print(f"   📦 Image size: {file_size_mb:.2f}MB")
+                        
                 except Exception as e:
                     print(f"⚠️ Failed to process image {img_path}: {e}")
+                    import traceback
+                    print(f"   Traceback: {traceback.format_exc()}")
+        
+        print(f"   ✅ Successfully processed {processed_count} images")
         
         # Generate response
         response = model_instance.generate_content(content)
@@ -225,7 +287,7 @@ class AIAnalysisService:
                                     current_y += (chunk_height - overlap)
                                     
                                     # Safety limit for chunks per image
-                                    if total_chunks > 10: 
+                                    if total_chunks > 30: 
                                         break
                             else:
                                 # Small enough, send as is

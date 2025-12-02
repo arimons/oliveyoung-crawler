@@ -260,9 +260,9 @@
                             <div class="prompt-header">
                                 <label>텍스트 리뷰 프롬프트</label>
                                 <div class="analysis-status">
-                                    <span id="review-status-badge" class="status-badge-small" style="display: none;">
-                                        <i class="fa-solid fa-file-check"></i> 기존 분석 로드됨
-                                    </span>
+                                    <button id="review-load-btn" class="btn-sm" onclick="loadExistingAnalysis('review')" style="display: none;">
+                                        <i class="fa-solid fa-file-arrow-down"></i> 기존 분석 결과 표시하기
+                                    </button>
                                 </div>
                             </div>
                             <textarea id="review-prompt" placeholder="리뷰 분석을 위한 프롬프트를 입력하세요..."></textarea>
@@ -276,9 +276,9 @@
                             <div class="prompt-header">
                                 <label>이미지 분석 프롬프트</label>
                                 <div class="analysis-status">
-                                    <span id="image-status-badge" class="status-badge-small" style="display: none;">
-                                        <i class="fa-solid fa-image"></i> 기존 분석 로드됨
-                                    </span>
+                                    <button id="image-load-btn" class="btn-sm" onclick="loadExistingAnalysis('image')" style="display: none;">
+                                        <i class="fa-solid fa-file-arrow-down"></i> 기존 분석 결과 표시하기
+                                    </button>
                                 </div>
                             </div>
                             <textarea id="image-prompt" placeholder="이미지 분석을 위한 프롬프트를 입력하세요..."></textarea>

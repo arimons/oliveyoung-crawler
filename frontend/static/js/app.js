@@ -87,11 +87,20 @@ const systemStatusText = document.getElementById('system-status-text');
 // Navigation
 document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
+        // Check if we're leaving the AI tab before switching
+        const previousTab = document.querySelector('.tab-content.active')?.id;
+        
         document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
 
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
         document.getElementById(`${btn.dataset.tab}-tab`).classList.add('active');
+
+        // Clear AI analysis results when leaving AI tab
+        if (previousTab === 'ai-tab' && btn.dataset.tab !== 'ai') {
+            clearAnalysisResults();
+            hideAnalysisStatus();
+        }
 
         if (btn.dataset.tab === 'history') {
             loadHistory();
@@ -783,8 +792,20 @@ async function analyzeReviews() {
         // Render based on current view mode
         renderResult();
         
-        // Update analysis status after successful analysis
-        setTimeout(loadProductPreview, 1000); // Delay to ensure file is saved
+        // Refresh load buttons to show the newly created analysis
+        setTimeout(() => {
+            const productFolder = document.getElementById('product-select').value;
+            if (productFolder) {
+                fetch(`${API_BASE}/analyze/${productFolder}/status`)
+                    .then(res => res.json())
+                    .then(status => {
+                        const reviewBtn = document.getElementById('review-load-btn');
+                        const imageBtn = document.getElementById('image-load-btn');
+                        if (status.review_analysis.exists) reviewBtn.style.display = 'inline-block';
+                        if (status.image_analysis.exists) imageBtn.style.display = 'inline-block';
+                    });
+            }
+        }, 1000);
 
     } catch (e) {
         resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
@@ -827,8 +848,20 @@ async function analyzeImages() {
         // Render based on current view mode
         renderResult();
         
-        // Update analysis status after successful analysis
-        setTimeout(loadProductPreview, 1000); // Delay to ensure file is saved
+        // Refresh load buttons to show the newly created analysis
+        setTimeout(() => {
+            const productFolder = document.getElementById('product-select').value;
+            if (productFolder) {
+                fetch(`${API_BASE}/analyze/${productFolder}/status`)
+                    .then(res => res.json())
+                    .then(status => {
+                        const reviewBtn = document.getElementById('review-load-btn');
+                        const imageBtn = document.getElementById('image-load-btn');
+                        if (status.review_analysis.exists) reviewBtn.style.display = 'inline-block';
+                        if (status.image_analysis.exists) imageBtn.style.display = 'inline-block';
+                    });
+            }
+        }, 1000);
 
     } catch (e) {
         resultArea.innerHTML = `<div style="color:var(--danger)">오류 발생: ${e.message}</div>`;
@@ -850,7 +883,7 @@ async function loadProductPreview() {
         const res = await fetch(`${API_BASE}/analyze/${productFolder}/status`);
         if (res.ok) {
             const status = await res.json();
-            await autoLoadAnalysisIfExists(status);
+            showLoadButtonsIfExists(status);
         } else {
             hideAnalysisStatus();
             clearAnalysisResults();
@@ -862,30 +895,25 @@ async function loadProductPreview() {
     }
 }
 
-async function autoLoadAnalysisIfExists(status) {
-    let loadedAny = false;
+function showLoadButtonsIfExists(status) {
+    const reviewBtn = document.getElementById('review-load-btn');
+    const imageBtn = document.getElementById('image-load-btn');
     
-    // Priority: Load review first, then image if no review exists
+    // Show buttons for existing analyses
     if (status.review_analysis.exists) {
-        try {
-            await loadExistingAnalysisQuiet('review');
-            updateAnalysisStatus(status, 'review');
-            loadedAny = true;
-        } catch (e) {
-            console.error('Failed to auto-load review analysis:', e);
-        }
-    } else if (status.image_analysis.exists) {
-        try {
-            await loadExistingAnalysisQuiet('image');
-            updateAnalysisStatus(status, 'image');
-            loadedAny = true;
-        } catch (e) {
-            console.error('Failed to auto-load image analysis:', e);
-        }
+        reviewBtn.style.display = 'inline-block';
+    } else {
+        reviewBtn.style.display = 'none';
     }
     
-    if (!loadedAny) {
-        hideAnalysisStatus();
+    if (status.image_analysis.exists) {
+        imageBtn.style.display = 'inline-block';
+    } else {
+        imageBtn.style.display = 'none';
+    }
+    
+    // Only clear results if there's no current analysis displayed
+    if (!currentAnalysisResult) {
         clearAnalysisResults();
     }
 }
@@ -897,26 +925,15 @@ function clearAnalysisResults() {
 }
 
 function updateAnalysisStatus(status, loadedType = null) {
-    const reviewBadge = document.getElementById('review-status-badge');
-    const imageBadge = document.getElementById('image-status-badge');
-    
-    // Show badge for the loaded analysis type
-    if (loadedType === 'review') {
-        reviewBadge.style.display = 'flex';
-        imageBadge.style.display = 'none';
-    } else if (loadedType === 'image') {
-        reviewBadge.style.display = 'none';
-        imageBadge.style.display = 'flex';
-    } else {
-        // Hide all if nothing loaded
-        reviewBadge.style.display = 'none';
-        imageBadge.style.display = 'none';
-    }
+    // This function is no longer needed for auto-loading
+    // but kept for compatibility if called elsewhere
 }
 
 function hideAnalysisStatus() {
-    document.getElementById('review-status-badge').style.display = 'none';
-    document.getElementById('image-status-badge').style.display = 'none';
+    const reviewBtn = document.getElementById('review-load-btn');
+    const imageBtn = document.getElementById('image-load-btn');
+    if (reviewBtn) reviewBtn.style.display = 'none';
+    if (imageBtn) imageBtn.style.display = 'none';
 }
 
 async function loadExistingAnalysisQuiet(analysisType) {
