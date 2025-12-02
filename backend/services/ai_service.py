@@ -4,18 +4,12 @@ from typing import List, Dict, Optional
 from openai import OpenAI
 import google.generativeai as genai
 
+from backend.config_manager import ConfigManager
+
 class AIAnalysisService:
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
-        self.api_key = api_key
-        self.model = model
-        
-        if model.startswith('gemini'):
-            # Configure Gemini client
-            genai.configure(api_key=api_key)
-            self.client = None  # Will use genai directly
-        else:
-            # Configure OpenAI client
-            self.client = OpenAI(api_key=api_key)
+    def __init__(self):
+        self.config_manager = ConfigManager()
+        self.client = None
 
     def _get_token_param(self, model: str, max_tokens: int) -> Dict[str, int]:
         """
@@ -46,6 +40,12 @@ class AIAnalysisService:
         """
         Analyze using Gemini API
         """
+        # Get latest API key and configure
+        api_key = self.config_manager.get_api_key(model)
+        if not api_key:
+            raise ValueError("Gemini API Key not found.")
+        genai.configure(api_key=api_key)
+
         print(f"📤 Sending to Gemini:")
         print(f"   Model: {model}")
         print(f"   Prompt length: {len(prompt)} chars")
@@ -76,6 +76,12 @@ class AIAnalysisService:
         """
         Analyze using OpenAI API
         """
+        # Get latest API key and create client
+        api_key = self.config_manager.get_api_key(model)
+        if not api_key:
+            raise ValueError("OpenAI API Key not found.")
+        client = OpenAI(api_key=api_key)
+
         # GPT-5 models need much higher limits due to reasoning tokens
         if model.startswith("gpt-5"):
             max_tokens = 8000  # GPT-5 uses reasoning tokens internally
@@ -90,7 +96,7 @@ class AIAnalysisService:
         print(f"   Review text length: {len(review_text)} chars")
         print(f"   Token param: {token_param}")
         
-        response = self.client.chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that analyzes product reviews."},
@@ -135,6 +141,12 @@ class AIAnalysisService:
         Splits long vertical images (height > 3000px) into chunks to fit Gemini's 3072x3072 limit
         NO RESIZING - only splits to preserve image detail
         """
+        # Get latest API key and configure
+        api_key = self.config_manager.get_api_key(model)
+        if not api_key:
+            raise ValueError("Gemini API Key not found.")
+        genai.configure(api_key=api_key)
+
         from PIL import Image
         import io
         
@@ -238,6 +250,12 @@ class AIAnalysisService:
         """
         Analyze images using OpenAI API
         """
+        # Get latest API key and create client
+        api_key = self.config_manager.get_api_key(model)
+        if not api_key:
+            raise ValueError("OpenAI API Key not found.")
+        client = OpenAI(api_key=api_key)
+
         try:
             from PIL import Image
             import io
@@ -320,7 +338,7 @@ class AIAnalysisService:
             print(f"   Total chunks sent: {total_chunks}")
             print(f"   Token param: {token_param}")
 
-            response = self.client.chat.completions.create(
+            response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that analyzes product images."},

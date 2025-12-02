@@ -476,13 +476,8 @@ async def get_history_detail(folder_name: str):
 # AI Analysis Endpoints
 @router.post("/analyze/reviews")
 async def analyze_reviews(request: AnalysisRequest):
-    api_key = config_manager.get_api_key(request.model or 'gemini-2.5-flash')
     model = request.model or 'gemini-2.5-flash'
     
-    if not api_key:
-        model_type = 'GOOGLE_API_KEY' if model.startswith('gemini') else 'OPENAI_API_KEY'
-        raise HTTPException(status_code=400, detail=f"API Key not found. Please set {model_type} in .env file")
-        
     data_dir = os.path.join(os.getcwd(), "data")
     folder_path = os.path.join(data_dir, request.product_folder)
     print(f"🔍 Analyzing reviews for folder: {request.product_folder}")
@@ -528,7 +523,7 @@ async def analyze_reviews(request: AnalysisRequest):
     # Call AI Service
     try:
         print(f"🚀 Calling AI Service with model: {model}")
-        ai_service = AIAnalysisService(api_key, model)
+        ai_service = AIAnalysisService()
         result = ai_service.analyze_reviews(full_text, request.prompt, model=model)
         print(f"✅ AI Analysis complete. Result length: {len(result)}")
         
@@ -549,18 +544,15 @@ async def analyze_reviews(request: AnalysisRequest):
         return {"result": result}
     except Exception as e:
         print(f"❌ AI Analysis failed: {e}")
+        if "API Key not found" in str(e):
+             raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/analyze/images")
 async def analyze_images(request: AnalysisRequest):
     print(f"🔍 Analyzing images for folder: {request.product_folder}")
-    api_key = config_manager.get_api_key(request.model or 'gemini-2.5-flash')
     model = request.model or 'gemini-2.5-flash'
     
-    if not api_key:
-        model_type = 'GOOGLE_API_KEY' if model.startswith('gemini') else 'OPENAI_API_KEY'
-        raise HTTPException(status_code=400, detail=f"API Key not found. Please set {model_type} in .env file")
-        
     data_dir = os.path.join(os.getcwd(), "data")
     folder_path = os.path.join(data_dir, request.product_folder)
     print(f"📂 Target folder path: {folder_path}")
@@ -601,7 +593,7 @@ async def analyze_images(request: AnalysisRequest):
         
     print(f"🚀 Calling AI Service with {len(image_paths)} images")
     try:
-        ai_service = AIAnalysisService(api_key, model)
+        ai_service = AIAnalysisService()
         result = ai_service.analyze_images(image_paths, request.prompt, model=model)
         print("✅ Image analysis complete")
         
@@ -622,4 +614,6 @@ async def analyze_images(request: AnalysisRequest):
         return {"result": result}
     except Exception as e:
         print(f"❌ Image analysis failed: {e}")
+        if "API Key not found" in str(e):
+             raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
