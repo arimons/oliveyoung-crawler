@@ -477,8 +477,11 @@ select {
     color: #e2e8f0;
     border: 1px solid var(--border);
     min-height: 400px;
-    white-space: pre-wrap; /* Enable line wrapping while preserving formatting */
-    word-wrap: break-word; /* Break long words if needed */
+    word-wrap: break-word;
+}
+
+.text-result {
+    white-space: pre-wrap;
 }
 
 .placeholder-text {
