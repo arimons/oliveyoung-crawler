@@ -6,6 +6,10 @@ echo ==========================================
 
 cd /d "%~dp0"
 
+echo [INFO] Checking for updates...
+git pull origin main
+echo.
+
 if not exist venv (
     echo [ERROR] Virtual environment not found.
     echo Please run 'install.bat' first.
