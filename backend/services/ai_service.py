@@ -36,6 +36,15 @@ class AIAnalysisService:
             print(f"   Traceback: {traceback.format_exc()}")
             return f"Error analyzing reviews: {str(e)}"
 
+    def _sanitize_response(self, text: str) -> str:
+        """
+        Sanitize response text to prevent markdown rendering issues.
+        Replaces '~' with '&#126;' to prevent strikethrough rendering.
+        """
+        if not text:
+            return text
+        return text.replace('~', '&#126;')
+
     def _analyze_with_gemini(self, review_text: str, prompt: str, model: str) -> str:
         """
         Analyze using Gemini API
@@ -65,6 +74,9 @@ class AIAnalysisService:
         print(f"   Finish reason: {response.finish_reason if hasattr(response, 'finish_reason') else 'N/A'}")
         
         result = response.text if response.text else None
+        
+        if result:
+            result = self._sanitize_response(result)
         
         if not result:
             print(f"⚠️ Empty response details:")
@@ -111,6 +123,9 @@ class AIAnalysisService:
         print(f"   Finish reason: {response.choices[0].finish_reason}")
         
         result = response.choices[0].message.content
+        
+        if result:
+            result = self._sanitize_response(result)
         
         if not result:
             print(f"⚠️ Empty response details:")
@@ -240,6 +255,9 @@ class AIAnalysisService:
         
         result = response.text if response.text else None
         
+        if result:
+            result = self._sanitize_response(result)
+        
         if not result:
             print(f"⚠️ Empty response details:")
             print(f"   Full response: {response}")
@@ -354,6 +372,9 @@ class AIAnalysisService:
             
             result = response.choices[0].message.content
             # print(f"🔍 AI Response: {result[:200] if result else 'None'}...")
+            
+            if result:
+                result = self._sanitize_response(result)
             
             if not result:
                 print(f"⚠️ Empty response details:")
