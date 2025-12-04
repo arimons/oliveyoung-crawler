@@ -80,7 +80,7 @@ function compressOliveyoungUrl(url) {
 }
 
 // DOM Elements
-const keywordForm = document.getElementById('keyword-form');
+// keywordForm removed
 const urlForm = document.getElementById('url-form');
 const liveStatus = document.getElementById('live-status');
 const progressBar = document.getElementById('progress-bar');
@@ -120,13 +120,10 @@ function switchInputMode(mode) {
 
     const multiUrlForm = document.getElementById('multi-url-form');
 
-    keywordForm.classList.add('hidden');
     urlForm.classList.add('hidden');
     multiUrlForm.classList.add('hidden');
 
-    if (mode === 'keyword') {
-        keywordForm.classList.remove('hidden');
-    } else if (mode === 'url') {
+    if (mode === 'url') {
         urlForm.classList.remove('hidden');
     } else if (mode === 'multi-url') {
         multiUrlForm.classList.remove('hidden');
@@ -246,54 +243,7 @@ function toggleCommonReviewDate() {
 }
 
 // API Calls
-async function startKeywordCrawl() {
-    const keyword = document.getElementById('keyword-input').value;
-    const maxProducts = document.getElementById('max-products').value;
-
-    // Common Settings
-    const saveFormat = document.getElementById('common-save-format').value;
-    const splitMode = "conservative"; // Always conservative (최대한 합치기)
-    const collectReviews = document.getElementById('common-collect-reviews').checked;
-    // reviewsOnly removed
-    let reviewEndDate = null;
-
-    if (collectReviews) {
-        const dateInput = document.getElementById('common-review-end-date').value;
-        if (dateInput) {
-            reviewEndDate = dateInput.replace(/-/g, '.');
-        }
-    }
-
-    if (!keyword) {
-        alert('검색어를 입력해주세요');
-        return;
-    }
-
-    try {
-        const res = await fetch(`${API_BASE}/crawl/keyword`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                keyword,
-                max_products: parseInt(maxProducts),
-                save_format: saveFormat,
-                split_mode: splitMode,
-                collect_reviews: collectReviews,
-                reviews_only: document.getElementById('common-reviews-only').checked,
-                review_end_date: reviewEndDate
-            })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail);
-        }
-
-        startPolling();
-    } catch (e) {
-        alert(`오류: ${e.message}`);
-    }
-}
+// startKeywordCrawl removed
 
 async function startUrlCrawl() {
     const inputUrl = document.getElementById('url-input').value;
@@ -1026,12 +976,21 @@ function renderResult() {
         let processedContent = currentAnalysisResult;
         
         // Improve bullet point formatting: Add line breaks before bullet points that are on the same line
-        // This handles cases like: "• item1 • item2 • item3" -> "• item1\n• item2\n• item3"
+        // This handles cases like: "• item1 • item2" -> "• item1\n• item2"
         processedContent = processedContent.replace(/(\S)\s*•\s*/g, '$1\n• ');
         
         // Also handle cases where bullets start a line but are concatenated
         processedContent = processedContent.replace(/^•\s*/gm, '• ');
+
+        // [NEW] Handle - and * bullets if they follow punctuation (to avoid breaking words like co-worker)
+        processedContent = processedContent.replace(/([.:?!])\s*([-*])\s+/g, '$1\n$2 ');
         
+        // Configure marked options
+        marked.setOptions({
+            breaks: true,  // Convert \n to <br>
+            gfm: true      // GitHub Flavored Markdown
+        });
+
         const htmlContent = marked.parse(processedContent);
         resultArea.innerHTML = `<div class="markdown-result">${htmlContent}</div>`;
     }
