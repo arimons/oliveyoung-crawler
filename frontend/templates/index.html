@@ -238,9 +238,12 @@
                         <div class="card prompt-card">
                             <div class="prompt-header">
                                 <label>텍스트 리뷰 프롬프트</label>
-                                <div class="analysis-status">
+                                <div class="analysis-status" style="display: flex; gap: 5px;">
+                                    <button class="btn-sm" onclick="resetReviewPrompt()" title="기본 템플릿으로 초기화">
+                                        <i class="fa-solid fa-rotate-left"></i> 템플릿 불러오기
+                                    </button>
                                     <button id="review-load-btn" class="btn-sm" onclick="loadExistingAnalysis('review')" style="display: none;">
-                                        <i class="fa-solid fa-file-arrow-down"></i> 기존 분석 결과 표시하기
+                                        <i class="fa-solid fa-file-arrow-down"></i> 결과 가져오기
                                     </button>
                                 </div>
                             </div>
@@ -254,9 +257,12 @@
                         <div class="card prompt-card">
                             <div class="prompt-header">
                                 <label>이미지 분석 프롬프트</label>
-                                <div class="analysis-status">
+                                <div class="analysis-status" style="display: flex; gap: 5px;">
+                                    <button class="btn-sm" onclick="resetImagePrompt()" title="기본 템플릿으로 초기화">
+                                        <i class="fa-solid fa-rotate-left"></i> 템플릿 불러오기
+                                    </button>
                                     <button id="image-load-btn" class="btn-sm" onclick="loadExistingAnalysis('image')" style="display: none;">
-                                        <i class="fa-solid fa-file-arrow-down"></i> 기존 분석 결과 표시하기
+                                        <i class="fa-solid fa-file-arrow-down"></i> 결과 가져오기
                                     </button>
                                 </div>
                             </div>

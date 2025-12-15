@@ -1,0 +1,66 @@
+{
+  "name": "oliveyoung-crawler",
+  "version": "1.0.0",
+  "description": "올리브영 온라인몰에서 **상품 상세 정보와 이미지를 자동으로 수집**하고, **AI를 활용하여 리뷰와 이미지를 분석**하는 올인원 도구입니다.",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "asar": false,
+    "appId": "com.oliveyoung.crawler",
+    "productName": "Olive Young Crawler",
+    "directories": {
+      "output": "dist/electron"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "main.js",
+      "loading.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".",
+        "to": "app",
+        "filter": [
+          "!node_modules",
+          "!dist",
+          "!build",
+          "!.git",
+          "!.cache",
+          "!**/__pycache__",
+          "!**/*.pyc"
+        ]
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arimons/oliveyoung-crawler.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/arimons/oliveyoung-crawler/issues"
+  },
+  "homepage": "https://github.com/arimons/oliveyoung-crawler#readme",
+  "devDependencies": {
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12"
+  }
+}

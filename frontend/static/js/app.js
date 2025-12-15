@@ -687,10 +687,38 @@ async function mergeHistory() {
 }
 
 // AI Analysis Functions
-function initializePrompts() {
-    // Set prompts from hardcoded constants
+async function initializePrompts() {
+    // 1. Set Defaults first
     document.getElementById('review-prompt').value = DEFAULT_REVIEW_PROMPT;
     document.getElementById('image-prompt').value = DEFAULT_IMAGE_PROMPT;
+
+    // 2. Try to load last used prompts from backend
+    try {
+        const res = await fetch(`${API_BASE}/config/prompts`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.review) {
+                document.getElementById('review-prompt').value = data.review;
+            }
+            if (data.image) {
+                document.getElementById('image-prompt').value = data.image;
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load last prompts', e);
+    }
+}
+
+function resetReviewPrompt() {
+    if (confirm('기본 템플릿으로 초기화하시겠습니까?')) {
+        document.getElementById('review-prompt').value = DEFAULT_REVIEW_PROMPT;
+    }
+}
+
+function resetImagePrompt() {
+    if (confirm('기본 템플릿으로 초기화하시겠습니까?')) {
+        document.getElementById('image-prompt').value = DEFAULT_IMAGE_PROMPT;
+    }
 }
 
 async function loadProductList() {
@@ -1178,6 +1206,9 @@ document.querySelector('button[data-tab="ai"]').addEventListener('click', () => 
     setTimeout(loadApiKeysStatus, 100); // Small delay to ensure UI is ready
 });
 
-// Load API keys on page load
-document.addEventListener('DOMContentLoaded', loadApiKeysStatus);
+// Load API keys and prompts on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadApiKeysStatus();
+    initializePrompts();
+});
 

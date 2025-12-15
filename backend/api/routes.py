@@ -6,6 +6,7 @@ from backend.services.parallel_crawler_service import ParallelCrawlerService
 from backend.services.ai_service import AIAnalysisService
 from backend.services.history_service import HistoryService
 from backend.config_manager import ConfigManager
+from backend.utils.path_utils import get_user_data_path
 import os
 import subprocess
 import platform
@@ -37,7 +38,7 @@ async def get_analysis_status(product_folder: str):
     """
     Check if analysis files exist for a product folder
     """
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     folder_path = os.path.join(data_dir, product_folder)
     
     if not os.path.exists(folder_path):
@@ -79,7 +80,7 @@ async def load_analysis_result(product_folder: str, analysis_type: str):
     if analysis_type not in ['review', 'image']:
         raise HTTPException(status_code=400, detail="analysis_type must be 'review' or 'image'")
         
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     folder_path = os.path.join(data_dir, product_folder)
     
     if not os.path.exists(folder_path):
@@ -281,7 +282,7 @@ async def stop_crawler():
 # Results & History Endpoints
 @router.get("/results")
 async def list_results():
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     if not os.path.exists(data_dir):
         return []
     
@@ -312,7 +313,7 @@ async def list_results():
 
 @router.post("/open-folder/{folder_name}")
 async def open_folder(folder_name: str):
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     folder_path = os.path.join(data_dir, folder_name)
     
     if not os.path.exists(folder_path):
@@ -332,7 +333,7 @@ async def open_folder(folder_name: str):
 
 @router.post("/open-data-dir")
 async def open_data_dir():
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
@@ -351,7 +352,7 @@ async def open_data_dir():
 
 @router.get("/image/{folder_name}")
 async def get_image(folder_name: str):
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     folder_path = os.path.join(data_dir, folder_name)
     
     thumb_path = os.path.join(folder_path, "thumbnail.jpg")
@@ -367,7 +368,7 @@ async def get_image(folder_name: str):
 @router.get("/file/{folder_name}/{file_name}")
 async def get_file(folder_name: str, file_name: str):
     """Serve files from product folder"""
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     folder_path = os.path.join(data_dir, folder_name)
     file_path = os.path.join(folder_path, file_name)
     
@@ -400,7 +401,7 @@ async def cleanup_history():
 async def delete_history_items(folder_names: List[str]):
     """Delete selected history items"""
     try:
-        data_dir = os.path.join(os.getcwd(), "data")
+        data_dir = get_user_data_path("data")
         deleted_count = 0
         
         for folder_name in folder_names:
@@ -421,7 +422,7 @@ async def delete_history_items(folder_names: List[str]):
 async def get_history_detail(folder_name: str):
     """Get detailed information for a history item"""
     try:
-        data_dir = os.path.join(os.getcwd(), "data")
+        data_dir = get_user_data_path("data")
         folder_path = os.path.join(data_dir, folder_name)
         
         if not os.path.exists(folder_path):
@@ -478,9 +479,12 @@ async def get_history_detail(folder_name: str):
 async def analyze_reviews(request: AnalysisRequest):
     model = request.model or 'gemini-2.5-flash'
     
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     folder_path = os.path.join(data_dir, request.product_folder)
     print(f"🔍 Analyzing reviews for folder: {request.product_folder}")
+    
+    # Save prompt
+    save_last_prompt("review", request.prompt)
     
     # Load reviews
     reviews = []
@@ -551,9 +555,13 @@ async def analyze_reviews(request: AnalysisRequest):
 @router.post("/analyze/images")
 async def analyze_images(request: AnalysisRequest):
     print(f"🔍 Analyzing images for folder: {request.product_folder}")
+    
+    # Save prompt
+    save_last_prompt("image", request.prompt)
+
     model = request.model or 'gemini-2.5-flash'
     
-    data_dir = os.path.join(os.getcwd(), "data")
+    data_dir = get_user_data_path("data")
     folder_path = os.path.join(data_dir, request.product_folder)
     print(f"📂 Target folder path: {folder_path}")
     
@@ -617,3 +625,53 @@ async def analyze_images(request: AnalysisRequest):
         if "API Key not found" in str(e):
              raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/config/prompts")
+async def get_last_prompts():
+    """
+    Get last used prompts from file.
+    """
+    data_dir = get_user_data_path("data")
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+        
+    prompts = {
+        "review": None,
+        "image": None
+    }
+    
+    review_prompt_path = os.path.join(data_dir, "last_prompt_review.txt")
+    if os.path.exists(review_prompt_path):
+        try:
+            with open(review_prompt_path, 'r', encoding='utf-8') as f:
+                prompts["review"] = f.read()
+        except:
+            pass
+            
+    image_prompt_path = os.path.join(data_dir, "last_prompt_image.txt")
+    if os.path.exists(image_prompt_path):
+        try:
+            with open(image_prompt_path, 'r', encoding='utf-8') as f:
+                prompts["image"] = f.read()
+        except:
+            pass
+            
+    return prompts
+
+def save_last_prompt(prompt_type: str, prompt_content: str):
+    """
+    Save prompt to file
+    """
+    try:
+        data_dir = get_user_data_path("data")
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+            
+        file_name = f"last_prompt_{prompt_type}.txt"
+        file_path = os.path.join(data_dir, file_name)
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(prompt_content)
+    except Exception as e:
+        print(f"Failed to save last prompt: {e}")
+

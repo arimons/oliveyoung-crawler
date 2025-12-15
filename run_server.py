@@ -2,19 +2,10 @@ import uvicorn
 import webbrowser
 import threading
 import time
-
-def open_browser():
-    """서버 시작 후 브라우저 자동 열기"""
-    time.sleep(1.5)  # 서버 시작 대기
-    webbrowser.open("http://localhost:8000")
-
-import uvicorn
-import webbrowser
-import threading
-import time
 import os
 import shutil
 import glob
+import sys
 
 def cleanup_chrome_profiles():
     """Cleanup leftover chrome profile folders"""
@@ -39,15 +30,22 @@ if __name__ == "__main__":
     print("📱 Frontend: http://localhost:8000")
     print("🔧 Backend API: http://localhost:8000/docs")
     
-    # 브라우저 자동 열기 (별도 스레드)
-    threading.Thread(target=open_browser, daemon=True).start()
+    # PyInstaller로 패키징되었는지 확인
+    is_packaged = getattr(sys, 'frozen', False)
     
-    # data 폴더 변경 감지 제외 설정
+    # 개발 환경에서만 브라우저 자동 열기
+    if not is_packaged:
+        threading.Thread(target=open_browser, daemon=True).start()
+    
+    # backend.main에서 app 객체 직접 import
+    from backend.main import app
+    
+    # app 객체를 직접 전달할 때는 reload를 사용할 수 없음
+    # reload 기능이 필요하면 "backend.main:app" 문자열로 전달해야 함
     uvicorn.run(
-        "backend.main:app", 
+        app,  # app 객체 직접 전달
         host="0.0.0.0", 
         port=8000, 
-        reload=True,
-        reload_excludes=["data/*", "data/**/*", "*.txt", "*.json", "*.log"],
+        reload=False,  # app 객체 사용 시 reload 비활성화 필수
         log_level="warning"
     )
