@@ -8,6 +8,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from typing import List, Dict, Tuple
 from datetime import datetime
 import time
+import requests
+import re
+import math
+import json
+import html
 
 
 class ReviewCrawler:
@@ -638,8 +643,10 @@ class ReviewCrawler:
         """
         try:
             with open(output_path, 'a', encoding='utf-8') as f:
-                for idx, review in enumerate(reviews, start_idx):
-                    f.write(f"[리뷰 {idx}] {review['date']}\n")
+                for review in reviews:
+                    # 날짜가 비어있을 경우를 대비한 기본값 처리
+                    date_str = review.get('date') or datetime.now().strftime("%Y.%m.%d")
+                    f.write(f"[{date_str}]\n")
                     f.write(review['text'] + "\n")
                     f.write("-" * 80 + "\n\n")
         except Exception as e:
@@ -926,4 +933,179 @@ class ReviewCrawler:
             if total_count > 0:
                 self.update_review_count(output_path, total_count, end_date)
         
+                
         return total_count
+
+    def crawl_reviews_via_api(self, output_path: str, end_date: str = None) -> int:
+        """
+        API를 직접 호출하여 리뷰 수집 (Selenium 쿠키 사용 + requests)
+        스크롤 방식보다 훨씬 빠르고 안정적임
+        """
+        total_count = 0
+        
+        try:
+            print("\n🚀 API 기반 리뷰 수집 시작 (Hybrid 방식)")
+            
+            # 1. Selenium에서 쿠키 및헤더 정보 가져오기
+            cookies = self.driver.get_cookies()
+            session = requests.Session()
+            
+            # 쿠키 설정
+            for cookie in cookies:
+                session.cookies.set(cookie['name'], cookie['value'])
+            
+            # 헤더 설정 (User-Agent 필수)
+            user_agent = self.driver.execute_script("return navigator.userAgent")
+            headers = {
+                'User-Agent': user_agent,
+                'Referer': self.driver.current_url,
+                'Origin': 'https://www.oliveyoung.co.kr',
+                'Host': 'www.oliveyoung.co.kr',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Sec-Fetch-Site': 'same-origin',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Dest': 'empty',
+                'Connection': 'keep-alive'
+            }
+            session.headers.update(headers)
+            
+            # 2. 상품 번호(goodsNo) 추출
+            current_url = self.driver.current_url
+            goods_no_match = re.search(r'goodsNo=([a-zA-Z0-9]+)', current_url)
+            if not goods_no_match:
+                print("❌ URL에서 goodsNo를 찾을 수 없습니다. 기존 스크롤 방식으로 전환합니다.")
+                return self.crawl_reviews_infinite_scroll(output_path, end_date)
+                
+            goods_no = goods_no_match.group(1)
+            print(f"  🔍 감지된 상품 번호: {goods_no}")
+            
+            # 3. 날짜 설정
+            end_date_obj = None
+            if end_date:
+                try:
+                    end_date_obj = datetime.strptime(end_date, "%Y.%m.%d")
+                    print(f"  📅 수집 종료 날짜: {end_date}")
+                except:
+                    print(f"  ⚠️ 날짜 형식 오류, 전체 수집: {end_date}")
+            
+            # 4. 리뷰 파일 초기화
+            self.init_review_file(output_path)
+            
+            # 5. API 호출 루프 (브라우저 컨텍스트 내에서 실행하여 403 우회)
+            page_idx = 1
+            reached_end_date = False
+            
+            while True:
+                print(f"  📖 페이지 {page_idx} 처리 중 (Browser API)...")
+                
+                # 브라우저 내에서 직접 fetch 호출 (세션/쿠키/헤더 완벽 유지)
+                js_script = """
+                const callback = arguments[arguments.length - 1];
+                const goodsNo = arguments[0];
+                const pageIdx = arguments[1];
+                
+                const params = new URLSearchParams({
+                    'goodsNo': goodsNo,
+                    'gdasSort': '02',
+                    'itemNo': 'all',
+                    'pageIdx': pageIdx,
+                    'colData': '',
+                    'keyword': '',
+                    'type': ''
+                });
+
+                fetch('/store/goods/getGdasNewListJson.do', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: params.toString()
+                })
+                .then(response => {
+                    if (!response.ok) return {success: false, status: response.status};
+                    return response.json().then(data => ({success: true, data: data}));
+                })
+                .then(result => callback(result))
+                .catch(err => callback({success: false, error: err.message}));
+                """
+                
+                try:
+                    result = self.driver.execute_async_script(js_script, goods_no, page_idx)
+                    
+                    if not result or not result.get('success'):
+                        status = result.get('status') if result else 'Unknown'
+                        error_msg = result.get('error') if result else 'No result'
+                        print(f"  ⚠️ Browser API 호출 실패 (Status: {status}, Error: {error_msg})")
+                        raise Exception(f"Browser API Error: {status} - {error_msg}")
+                    
+                    data = result.get('data')
+                    
+                    # 리뷰 리스트 가져오기
+                    review_list = data.get('gdasList', [])
+                    
+                    if not review_list:
+                        print("  ✅ 더 이상 리뷰가 없습니다.")
+                        break
+                        
+                    # 첫 페이지면 총 개수 확인
+                    if page_idx == 1:
+                        total_expected = data.get('totalCnt', 0)
+                        print(f"  📊 총 리뷰 개수(API 기준): {total_expected}개")
+                    
+                    print(f"  📖 페이지 {page_idx} 처리 중... ({len(review_list)}개)")
+                    
+                    processed_reviews = []
+                    
+                    for review in review_list:
+                        gdas_cont = review.get('gdasCont', '').strip()
+                        # HTML 태그 제거 (필요시)
+                        gdas_cont = re.sub('<[^>]*>', '', gdas_cont)
+                        gdas_cont = html.unescape(gdas_cont)
+                        
+                        regist_dt = review.get('registDt', '') # 2023.12.15 형식
+                        
+                        processed_reviews.append({
+                            "text": gdas_cont,
+                            "date": regist_dt
+                        })
+                        
+                        # 날짜 체크
+                        if end_date_obj and regist_dt:
+                            try:
+                                review_date_obj = datetime.strptime(regist_dt, "%Y.%m.%d")
+                                if review_date_obj < end_date_obj:
+                                    reached_end_date = True
+                            except:
+                                pass
+                    
+                    # 파일 저장
+                    if processed_reviews:
+                        self.append_reviews_to_file(processed_reviews, output_path, total_count + 1)
+                        total_count += len(processed_reviews)
+                        
+                    print(f"    ✅ {len(processed_reviews)}개 저장 완료 (누적: {total_count}개)")
+                    
+                    if reached_end_date:
+                        print(f"    🛑 종료 날짜({end_date})에 도달하여 수집을 중단합니다.")
+                        break
+                        
+                    page_idx += 1
+                    time.sleep(0.5) # 서버 부하 방지
+                    
+                except Exception as e:
+                    print(f"  ⚠️ API 처리 중 오류({type(e).__name__}): {e}")
+                    time.sleep(1)
+                    # 예외를 상위로 전파하여 Fallback(기존 방식)이 작동하도록 함
+                    raise e
+            
+            # 최종 업데이트
+            self.update_review_count(output_path, total_count, end_date)
+            return total_count
+            
+        except Exception as e:
+            print(f"❌ API 리뷰 수집 실패: {e}")
+            print("🔄 기존 스크롤 방식으로 전환 시도...")
+            return self.crawl_reviews_infinite_scroll(output_path, end_date)

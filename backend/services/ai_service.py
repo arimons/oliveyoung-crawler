@@ -1,8 +1,7 @@
 import os
 import base64
 from typing import List, Dict, Optional
-from openai import OpenAI
-import google.generativeai as genai
+import time
 
 from backend.config_manager import ConfigManager
 
@@ -53,6 +52,8 @@ class AIAnalysisService:
         api_key = self.config_manager.get_api_key(model)
         if not api_key:
             raise ValueError("Gemini API Key not found.")
+        
+        import google.generativeai as genai
         genai.configure(api_key=api_key)
 
         print(f"📤 Sending to Gemini:")
@@ -92,6 +93,8 @@ class AIAnalysisService:
         api_key = self.config_manager.get_api_key(model)
         if not api_key:
             raise ValueError("OpenAI API Key not found.")
+            
+        from openai import OpenAI
         client = OpenAI(api_key=api_key)
 
         # GPT-5 models need much higher limits due to reasoning tokens
@@ -160,6 +163,8 @@ class AIAnalysisService:
         api_key = self.config_manager.get_api_key(model)
         if not api_key:
             raise ValueError("Gemini API Key not found.")
+        
+        import google.generativeai as genai
         genai.configure(api_key=api_key)
 
         from PIL import Image
@@ -272,6 +277,8 @@ class AIAnalysisService:
         api_key = self.config_manager.get_api_key(model)
         if not api_key:
             raise ValueError("OpenAI API Key not found.")
+            
+        from openai import OpenAI
         client = OpenAI(api_key=api_key)
 
         try:

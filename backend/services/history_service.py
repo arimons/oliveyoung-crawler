@@ -124,21 +124,51 @@ class HistoryService:
                         seen_reviews.add(sig)
                         all_reviews.append(r)
                         
-                # We don't copy images, as per plan (keep newest only)
+                # Update review count in product_info.json
+                self._update_review_count(target_path, len(all_reviews))
+
+            # --- Missing Files sync logic added ---
+            # Now sync other files like images and analysis if they are missing in target
+            important_files = [
+                "thumbnail.jpg",
+                "product_detail_merged.jpg",
+                "product_detail_merged_part1.jpg",
+                "product_detail_merged_part2.jpg",
+                "image_analysis.txt",
+                "review_analysis.txt"
+            ]
+            
+            for src_folder in source_folders:
+                src_path = os.path.join(self.data_dir, src_folder)
                 
+                # Check important files
+                for filename in important_files:
+                    target_file = os.path.join(target_path, filename)
+                    src_file = os.path.join(src_path, filename)
+                    
+                    if not os.path.exists(target_file) and os.path.exists(src_file):
+                        try:
+                            shutil.copy2(src_file, target_file)
+                            print(f"[Merge] Copied missing file: {filename} from {src_folder}")
+                        except Exception as e:
+                            print(f"[Merge] Failed to copy {filename}: {e}")
+                
+                # Check detail_images folder
+                src_details = os.path.join(src_path, "detail_images")
+                target_details = os.path.join(target_path, "detail_images")
+                if not os.path.exists(target_details) and os.path.exists(src_details):
+                    try:
+                        shutil.copytree(src_details, target_details)
+                        print(f"[Merge] Copied missing detail_images folder from {src_folder}")
+                    except Exception as e:
+                        print(f"[Merge] Failed to copy detail_images: {e}")
+
                 # Delete source folder
                 try:
                     shutil.rmtree(src_path)
                     print(f"[Merge] Deleted source: {src_folder}")
                 except Exception as e:
                     print(f"[Merge] Failed to delete {src_folder}: {e}")
-            
-            # 3. Save merged reviews to target
-            if all_reviews:
-                self._save_reviews(target_path, all_reviews)
-                
-                # Update review count in product_info.json
-                self._update_review_count(target_path, len(all_reviews))
             
             merged_count += len(source_folders)
             

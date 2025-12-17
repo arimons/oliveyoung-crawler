@@ -124,14 +124,16 @@ class OliveyoungIntegratedCrawler:
         else:
             product_info = self.detail_crawler.extract_product_info_from_detail()
 
-        # 이미지 수집 (Smart Image Skip 적용)
-        # reviews_only 파라미터는 더 이상 사용하지 않음 (이미지 존재 여부로 판단)
-        
+        # 이미지 수집 (Smart Image Skip 및 reviews_only 적용)
         output_image_path = os.path.join(save_folder, "product_detail_merged.jpg")
         part1_path = os.path.join(save_folder, "product_detail_merged_part1.jpg")
         
+        if reviews_only:
+            print("ℹ️  '리뷰만 수집' 모드: 이미지 수집을 건너뜁니다.")
+            product_info["이미지_경로"] = ""
+            product_info["이미지_개수"] = 0
         # 이미지가 이미 존재하는지 확인
-        if os.path.exists(output_image_path) or os.path.exists(part1_path):
+        elif os.path.exists(output_image_path) or os.path.exists(part1_path):
             print(f"ℹ️  이미지가 이미 존재하여 다운로드를 건너뜁니다.")
             # 경로 설정 (존재하는 파일 기준)
             if os.path.exists(output_image_path):
@@ -139,8 +141,6 @@ class OliveyoungIntegratedCrawler:
             else:
                 product_info["이미지_경로"] = part1_path # part1이 있으면 그걸 대표 경로로
             
-            # 이미지 개수는 정확히 알 수 없으므로 1개 이상으로 가정하거나 기존 메타데이터를 읽어야 하지만,
-            # 여기서는 단순 스킵이 목적이므로 패스
             product_info["이미지_개수"] = 1 
         else:
             # 더보기 버튼 클릭
@@ -157,24 +157,30 @@ class OliveyoungIntegratedCrawler:
                 # 이미지 다운로드 및 병합
                 self.detail_crawler.download_and_merge_images(image_urls, output_image_path, split_mode=split_mode)
 
-                # 썸네일 다운로드
-                if product_info.get("썸네일_URL"):
-                    try:
-                        import requests
-                        thumb_url = product_info["썸네일_URL"]
-                        thumb_path = os.path.join(save_folder, "thumbnail.jpg")
-                        
-                        response = requests.get(thumb_url, stream=True)
-                        if response.status_code == 200:
-                            with open(thumb_path, 'wb') as f:
-                                for chunk in response.iter_content(1024):
-                                    f.write(chunk)
-                            print(f"  🖼️ 썸네일 다운로드 완료: {thumb_path}")
-                            product_info["썸네일_경로"] = thumb_path
-                        else:
-                            print(f"  ⚠️ 썸네일 다운로드 실패 (Status: {response.status_code})")
-                    except Exception as e:
-                        print(f"  ⚠️ 썸네일 다운로드 중 오류: {e}")
+            else:
+                # 이미지 다운로드 및 병합
+                self.detail_crawler.download_and_merge_images(image_urls, output_image_path, split_mode=split_mode)
+
+        # 썸네일 다운로드 (리뷰 전용 모드에서도 썸네일은 수집)
+        if product_info.get("썸네일_URL"):
+            try:
+                import requests
+                thumb_url = product_info["썸네일_URL"]
+                thumb_path = os.path.join(save_folder, "thumbnail.jpg")
+                
+                # 이미 존재하면 스킵 (Optional: 항상 최신으로 유지하고 싶으면 체크 해제)
+                if not os.path.exists(thumb_path):
+                    response = requests.get(thumb_url, stream=True, timeout=10)
+                    if response.status_code == 200:
+                        with open(thumb_path, 'wb') as f:
+                            for chunk in response.iter_content(1024):
+                                f.write(chunk)
+                        print(f"  🖼️ 썸네일 다운로드 완료: {thumb_path}")
+                        product_info["썸네일_경로"] = thumb_path
+                    else:
+                        print(f"  ⚠️ 썸네일 다운로드 실패 (Status: {response.status_code})")
+            except Exception as e:
+                print(f"  ⚠️ 썸네일 다운로드 중 오류: {e}")
 
         product_info["수집시각"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -198,14 +204,15 @@ class OliveyoungIntegratedCrawler:
                 print("✅ 리뷰 탭 활성화 완료")
             
             # New Layout (Infinite Scroll) 시도
+            # API-based review collection (Hybrid)
             try:
-                review_count = self.review_crawler.crawl_reviews_infinite_scroll(
+                review_count = self.review_crawler.crawl_reviews_via_api(
                     output_path=review_file,
                     end_date=review_end_date
                 )
             except Exception as e:
-                print(f"⚠️ 무한 스크롤 수집 실패, 기존 방식 시도: {e}")
-                review_count = self.review_crawler.crawl_all_reviews(
+                print(f"⚠️ API 수집 실패, 기존 방식 시도: {e}")
+                review_count = self.review_crawler.crawl_reviews_infinite_scroll(
                     output_path=review_file,
                     end_date=review_end_date
                 )

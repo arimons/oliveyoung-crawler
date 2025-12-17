@@ -27,6 +27,7 @@ class ProductDetailCrawler:
         """
         self.driver = driver
         self.log_callback = log_callback
+        self.cached_layout_type = None
 
     def log(self, message: str):
         """로그 출력"""
@@ -59,6 +60,7 @@ class ProductDetailCrawler:
             product_url: 상품 URL
         """
         print(f"🔗 상품 페이지로 이동: {product_url}")
+        self.cached_layout_type = None  # Reset cache on new page
         self.driver.get(product_url)
 
         # React 앱 렌더링 대기 - 상품명이 로드될 때까지
@@ -81,6 +83,9 @@ class ProductDetailCrawler:
             'legacy' 또는 'new'
         """
         try:
+            if self.cached_layout_type:
+                return self.cached_layout_type
+                
             print("🔍 레이아웃 타입 감지 중...")
             
             # Legacy layout 상품명 선택자 확인
@@ -101,6 +106,7 @@ class ProductDetailCrawler:
                     elem = self.driver.find_element(By.CSS_SELECTOR, selector)
                     if elem.text.strip():
                         print("  ✅ Legacy Layout 감지!")
+                        self.cached_layout_type = 'legacy'
                         return 'legacy'
                 except:
                     continue
@@ -111,6 +117,7 @@ class ProductDetailCrawler:
                     elem = self.driver.find_element(By.CSS_SELECTOR, selector)
                     if elem.text.strip():
                         print("  ✅ New Layout 감지!")
+                        self.cached_layout_type = 'new'
                         return 'new'
                 except:
                     continue
@@ -154,6 +161,7 @@ class ProductDetailCrawler:
             """)
             
             print(f"  ✅ JavaScript 감지 결과: {layout_type.title()} Layout")
+            self.cached_layout_type = layout_type
             return layout_type
             
         except Exception as e:
@@ -351,12 +359,20 @@ class ProductDetailCrawler:
                                         const optText = opt.textContent || '';
                                         if (optText.includes('최신')) {
                                             try {
-                                                opt.click();
-                                                console.log(`✅ 드롭다운에서 최신순 선택: ${optText.trim()}`);
-                                                sortClicked = true;
-                                                break;
-                                            } catch (e) {}
-                                        }
+                     if response.status_code != 200:
+                        # 403 Forbidden은 즉시 중단 (WAF 차단)
+                        if response.status_code == 403:
+                            print(f"  ⚠️ API 접근이 거부되었습니다 (403).")
+                            raise Exception("API Access Denied (WAF Block)")
+                            
+                        consecutive_errors += 1
+                        print(f"  ⚠️ API 호출 실패 (Status: {response.status_code}) - 시도 {consecutive_errors}/{MAX_RETRIES}")
+                        
+                        if consecutive_errors >= MAX_RETRIES:
+                             raise Exception(f"API 반복 실패 (Status: {response.status_code})")
+                             
+                        time.sleep(2)
+                        continue                }
                                     }
                                 }, 500);
                                 break;

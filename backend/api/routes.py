@@ -16,12 +16,16 @@ from typing import Optional, List
 from pydantic import BaseModel
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from datetime import datetime
+import time
 
 router = APIRouter()
+
+print(f"[{time.strftime('%H:%M:%S')}] Initializing services...")
 crawler_service = CrawlerService()
 parallel_crawler_service = ParallelCrawlerService()
 history_service = HistoryService()
 config_manager = ConfigManager()
+print(f"[{time.strftime('%H:%M:%S')}] Services initialized.")
 
 # Pydantic Models
 class AnalysisRequest(BaseModel):
