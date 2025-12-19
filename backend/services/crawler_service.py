@@ -13,6 +13,7 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from oliveyoung_crawler import OliveyoungIntegratedCrawler
+from backend.services.history_service import HistoryService
 
 class CrawlerService:
     _instance = None
@@ -36,6 +37,26 @@ class CrawlerService:
         self.logs = []
         self.last_result = None
         self._initialized = True
+        self.pending_confirms = {} # {id: bool}
+        self.confirm_events = {} # {id: threading.Event}
+
+    def wait_for_user_confirmation(self, confirm_id: str, timeout: int = 60) -> bool:
+        """프론트엔드로부터 특정 확인 응답이 올 때까지 대기"""
+        event = threading.Event()
+        self.confirm_events[confirm_id] = event
+        
+        # event.wait() returns True if the flag is set, False on timeout
+        success = event.wait(timeout=timeout)
+        
+        response = self.pending_confirms.pop(confirm_id, False) if success else False
+        self.confirm_events.pop(confirm_id, None)
+        return response
+
+    def set_user_confirmation(self, confirm_id: str, response: bool):
+        """프론트엔드에서 보내온 확인 응답을 설정"""
+        self.pending_confirms[confirm_id] = response
+        if confirm_id in self.confirm_events:
+            self.confirm_events[confirm_id].set()
 
     def start_crawler_instance(self, headless: bool = False):
         """Initialize the Selenium crawler if not already running."""
@@ -48,7 +69,12 @@ class CrawlerService:
         if self.crawler is None:
             self.log("Initializing crawler...")
             try:
-                self.crawler = OliveyoungIntegratedCrawler(headless=headless, log_callback=self.log)
+                self.crawler = OliveyoungIntegratedCrawler(
+                    headless=headless, 
+                    log_callback=self.log,
+                    confirmation_callback=self.wait_for_user_confirmation,
+                    merge_callback=HistoryService().merge_specific_product
+                )
                 self.crawler.start()
                 self.log("Crawler initialized successfully.")
             except Exception as e:
@@ -82,7 +108,7 @@ class CrawlerService:
         self.current_action = action
         self.progress = progress
 
-    def crawl_keyword(self, keyword: str, max_products: int = 10, save_format: str = "both", split_mode: str = "conservative", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False):
+    def crawl_keyword(self, keyword: str, max_products: int = 10, save_format: str = "both", split_mode: str = "conservative", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False, max_reviews: int = 300):
         if self.is_running:
             raise Exception("Crawler is already running")
 
@@ -90,10 +116,10 @@ class CrawlerService:
         self.logs = [] # Clear logs for new run
         self.last_result = None
         
-        thread = threading.Thread(target=self._crawl_keyword_task, args=(keyword, max_products, save_format, split_mode, collect_reviews, review_end_date, reviews_only))
+        thread = threading.Thread(target=self._crawl_keyword_task, args=(keyword, max_products, save_format, split_mode, collect_reviews, review_end_date, reviews_only, max_reviews), daemon=True)
         thread.start()
 
-    def _crawl_keyword_task(self, keyword: str, max_products: int, save_format: str, split_mode: str, collect_reviews: bool, review_end_date: str, reviews_only: bool):
+    def _crawl_keyword_task(self, keyword: str, max_products: int, save_format: str, split_mode: str, collect_reviews: bool, review_end_date: str, reviews_only: bool, max_reviews: int):
         try:
             self.start_crawler_instance(headless=False) # Always show browser for now as per user preference usually
             
@@ -106,7 +132,8 @@ class CrawlerService:
                 split_mode=split_mode,
                 collect_reviews=collect_reviews,
                 review_end_date=review_end_date,
-                reviews_only=reviews_only
+                reviews_only=reviews_only,
+                max_reviews=max_reviews
             )
             
             self.last_result = result
@@ -121,7 +148,7 @@ class CrawlerService:
             self.stop_crawler_instance() # Auto-close browser after task
             self.is_running = False
 
-    def crawl_url(self, url: str, product_name: Optional[str] = None, save_format: str = "both", split_mode: str = "conservative", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False):
+    def crawl_url(self, url: str, product_name: Optional[str] = None, save_format: str = "both", split_mode: str = "conservative", collect_reviews: bool = False, review_end_date: str = None, reviews_only: bool = False, max_reviews: int = 300):
         if self.is_running:
             raise Exception("Crawler is already running")
 
@@ -129,10 +156,10 @@ class CrawlerService:
         self.logs = []
         self.last_result = None
 
-        thread = threading.Thread(target=self._crawl_url_task, args=(url, product_name, save_format, split_mode, collect_reviews, review_end_date, reviews_only))
+        thread = threading.Thread(target=self._crawl_url_task, args=(url, product_name, save_format, split_mode, collect_reviews, review_end_date, reviews_only, max_reviews), daemon=True)
         thread.start()
 
-    def _crawl_url_task(self, url: str, product_name: Optional[str], save_format: str, split_mode: str, collect_reviews: bool, review_end_date: str, reviews_only: bool):
+    def _crawl_url_task(self, url: str, product_name: Optional[str], save_format: str, split_mode: str, collect_reviews: bool, review_end_date: str, reviews_only: bool, max_reviews: int):
         try:
             self.start_crawler_instance(headless=False)
             
@@ -146,7 +173,8 @@ class CrawlerService:
                 split_mode=split_mode,
                 collect_reviews=collect_reviews,
                 review_end_date=review_end_date,
-                reviews_only=reviews_only
+                reviews_only=reviews_only,
+                max_reviews=max_reviews
             )
             
             self.last_result = result

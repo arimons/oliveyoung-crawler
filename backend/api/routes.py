@@ -12,7 +12,7 @@ import subprocess
 import platform
 import json
 import re
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from datetime import datetime
@@ -220,7 +220,8 @@ async def start_crawl_keyword(request: CrawlKeywordRequest):
             request.split_mode,
             request.collect_reviews,
             request.review_end_date,
-            request.reviews_only
+            request.reviews_only,
+            request.max_reviews
         )
         return {"message": "Crawl started", "keyword": request.keyword}
     except Exception as e:
@@ -242,7 +243,8 @@ async def start_crawl_url(request: CrawlUrlRequest):
             request.split_mode,
             request.collect_reviews,
             request.review_end_date,
-            request.reviews_only
+            request.reviews_only,
+            request.max_reviews
         )
         return {"message": "Crawl started", "url": url}
     except Exception as e:
@@ -264,7 +266,8 @@ async def start_crawl_parallel(request: CrawlParallelRequest, background_tasks: 
             split_mode=request.split_mode,
             collect_reviews=request.collect_reviews,
             review_end_date=request.review_end_date,
-            reviews_only=request.reviews_only
+            reviews_only=request.reviews_only,
+            max_reviews=request.max_reviews
         )
         
     background_tasks.add_task(run_parallel_crawl)
@@ -278,10 +281,19 @@ async def get_status():
 async def get_parallel_status():
     return parallel_crawler_service.get_status()
 
-@router.post("/stop")
+@router.post("/crawl/stop")
 async def stop_crawler():
     crawler_service.stop_crawler_instance()
     return {"message": "Crawler stopped"}
+
+@router.post("/crawl/confirm")
+async def confirm_crawl_action(request: Dict[str, Any]):
+    confirm_id = request.get("confirm_id")
+    response = request.get("response", False)
+    if not confirm_id:
+        raise HTTPException(status_code=400, detail="confirm_id is required")
+    crawler_service.set_user_confirmation(confirm_id, response)
+    return {"status": "ok"}
 
 # Results & History Endpoints
 @router.get("/results")
@@ -523,6 +535,7 @@ async def analyze_reviews(request: AnalysisRequest):
     full_text = re.sub(r'^[=\-]{10,}$', '', full_text, flags=re.MULTILINE)
     full_text = re.sub(r'^총 \d+개의 리뷰.*$', '', full_text, flags=re.MULTILINE)
     full_text = re.sub(r'\[\d{4}[.-]\d{2}[.-]\d{2}\]', '', full_text)
+    full_text = re.sub(r'\[리뷰 \d+\]', '', full_text)
     full_text = re.sub(r'\n{3,}', '\n\n', full_text)
     full_text = full_text.strip()
     

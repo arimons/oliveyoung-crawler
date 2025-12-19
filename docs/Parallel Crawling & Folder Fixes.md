@@ -130,8 +130,8 @@ New-Item -Path backend\services\__init__.py -ItemType File -Force`*
 내 질문은 이미 실행할때 
 
 🚀 Starting Olive Young Crawler Web Server...
-📱 Frontend: http://localhost:8000
-🔧 Backend API: http://localhost:8000/docs
+📱 Frontend: http://127.0.0.1:8000
+🔧 Backend API: http://127.0.0.1:8000/docs
 INFO:     Will watch for changes in these directories: ['C:\\Users\\amore\\oliveyoung-crawler']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 
@@ -2917,7 +2917,7 @@ Python의 `webbrowser` 모듈을 사용하면 서버 시작 후 자동으로 브
 
 이제 [run_server.py](cci:7://file:///c:/Users/amore/oliveyoung-crawler/run_server.py:0:0-0:0)를 실행하면:
 1. 서버가 시작됨
-2. 1.5초 후 자동으로 기본 브라우저에서 `http://localhost:8000` 열림
+2. 1.5초 후 자동으로 기본 브라우저에서 `http://127.0.0.1:8000` 열림
 
 **어떻게 작동하나요?**
 - `threading.Thread`로 별도 스레드에서 브라우저 오픈
@@ -5631,7 +5631,7 @@ oliveyoung-crawler/
 ### 🚀 사용자 경험
 1. [install.bat](cci:7://file:///c:/Users/amore/oliveyoung-crawler/install.bat:0:0-0:0) 실행 → 자동 설치
 2. 바탕화면의 **올리브영 로고 아이콘** 클릭
-3. 브라우저에서 `http://localhost:8000` 자동 접속
+3. 브라우저에서 `http://127.0.0.1:8000` 자동 접속
 
 v4.0 배포 준비 완료! 🎊
 
@@ -6306,7 +6306,7 @@ Default 프롬프트는 왜 안들어가있어? 두번 물어봤는데
 
 *User accepted the command `del config\user_config.json`*
 
-*User accepted the command `python -c "import requests, json; print(json.dumps(requests.get('http://localhost:8000/api/config').json(), indent=2, ensure_ascii=False))"`*
+*User accepted the command `python -c "import requests, json; print(json.dumps(requests.get('http://127.0.0.1:8000/api/config').json(), indent=2, ensure_ascii=False))"`*
 
 *Checked command status*
 
@@ -6592,7 +6592,7 @@ AI 리뷰 페이지  내가 원하는대로 구현이 안됐어.
 
 *Edited relevant file*
 
-*User accepted the command `python -c "import requests; print(requests.post('http://localhost:8000/api/history/merge').text)"`*
+*User accepted the command `python -c "import requests; print(requests.post('http://127.0.0.1:8000/api/history/merge').text)"`*
 
 *Checked command status*
 

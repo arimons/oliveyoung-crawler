@@ -6,7 +6,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def _crawl_worker(url: str, product_name: str = None, save_format: str = "json", 
                  split_mode: str = "aggressive", collect_reviews: bool = False, 
-                 review_end_date: str = None, reviews_only: bool = False) -> Dict:
+                 review_end_date: str = None, reviews_only: bool = False,
+                 max_reviews: int = 300) -> Dict:
     """
     Worker function to run in a separate process.
     Instantiates a new CrawlerService (and thus a new Chrome instance) for each task.
@@ -24,7 +25,8 @@ def _crawl_worker(url: str, product_name: str = None, save_format: str = "json",
             split_mode=split_mode,
             collect_reviews=collect_reviews,
             review_end_date=review_end_date,
-            reviews_only=reviews_only
+            reviews_only=reviews_only,
+            max_reviews=max_reviews
         )
         return {"url": url, "status": "success", "result": result}
     except Exception as e:

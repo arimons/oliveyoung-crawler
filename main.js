@@ -8,7 +8,7 @@ let mainWindow;
 let backendProcess;
 
 const BACKEND_PORT = 8000;
-const URL = `http://localhost:${BACKEND_PORT}`;
+const URL = `http://127.0.0.1:${BACKEND_PORT}`;
 
 // Setup logging
 const logPath = path.join(app.getPath('userData'), 'app.log');

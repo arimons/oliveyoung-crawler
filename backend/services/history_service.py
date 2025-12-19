@@ -2,7 +2,7 @@ import os
 import shutil
 import re
 import json
-from typing import List, Dict, Set, Any
+from typing import List, Dict, Set, Any, Optional
 from datetime import datetime
 
 class HistoryService:
@@ -46,155 +46,127 @@ class HistoryService:
             
         return {"deleted_count": deleted_count}
 
-    def merge_duplicates(self) -> Dict[str, Any]:
-        """
-        Merge folders with the same product name.
-        Keep the newest folder, merge reviews from older folders, then delete older folders.
-        """
+    def merge_specific_product(self, product_name: str) -> Optional[str]:
+        """특정 상품명을 가진 폴더들을 하나로 병합"""
         folders = self._get_all_folders()
+        product_folders = []
         
-        # Group by product name
-        # Folder format: YYMMDD_ProductName
-        # We need to extract ProductName.
-        # Be careful if ProductName contains underscores.
-        # The prefix is always 6 digits + underscore.
+        for folder in folders:
+            match = re.match(r"^(\d{6})_(.+)$", folder)
+            if match and match.group(2) == product_name:
+                product_folders.append(folder)
         
+        if len(product_folders) < 2:
+            return product_folders[0] if product_folders else None
+            
+        # 최신 폴더(날짜가 가장 큰 것)를 타겟으로 함
+        product_folders.sort(reverse=True)
+        target_folder = product_folders[0]
+        source_folders = product_folders[1:]
+        
+        self._perform_merge(target_folder, source_folders)
+        return os.path.join(self.data_dir, target_folder)
+
+    def merge_duplicates(self) -> Dict[str, Any]:
+        """중복된 상품명을 가진 모든 폴더들에 대해 병합 수행"""
+        folders = self._get_all_folders()
         groups: Dict[str, List[str]] = {}
         
         for folder in folders:
-            # Check if folder starts with date prefix
             match = re.match(r"^(\d{6})_(.+)$", folder)
             if match:
-                date_str = match.group(1)
                 product_name = match.group(2)
-                
-                # Skip if it looks like a temp folder
-                if product_name.startswith("product_20"):
-                    continue
-                    
-                if product_name not in groups:
-                    groups[product_name] = []
+                if product_name.startswith("product_20"): continue
+                if product_name not in groups: groups[product_name] = []
                 groups[product_name].append(folder)
         
         merged_count = 0
         total_groups = 0
         
         for product_name, folder_list in groups.items():
-            if len(folder_list) < 2:
-                continue
-                
+            if len(folder_list) < 2: continue
             total_groups += 1
-            
-            # Sort by date descending (assuming folder name prefix YYMMDD is sortable)
-            # If multiple folders have same date, sort by full name (timestamp usually not in name unless temp)
-            # Actually, if same date, we might have collision or suffix? 
-            # Let's just sort reverse=True.
             folder_list.sort(reverse=True)
-            
-            target_folder = folder_list[0]
-            source_folders = folder_list[1:]
-            
-            print(f"[Merge] Merging {len(source_folders)} folders into {target_folder} for '{product_name}'")
-            
-            target_path = os.path.join(self.data_dir, target_folder)
-            
-            # Collect all reviews
-            all_reviews = []
-            seen_reviews = set() # To avoid duplicates
-            
-            # 1. Load reviews from target first (to keep them)
-            target_reviews = self._load_reviews(target_path)
-            for r in target_reviews:
-                # Create a signature for deduplication
-                # Assuming review has 'date', 'author', 'content' or similar
-                # If it's just a list of dicts
-                sig = self._make_review_signature(r)
-                if sig not in seen_reviews:
-                    seen_reviews.add(sig)
-                    all_reviews.append(r)
-            
-            # 2. Load from sources
-            for src_folder in source_folders:
-                src_path = os.path.join(self.data_dir, src_folder)
-                src_reviews = self._load_reviews(src_path)
-                
-                for r in src_reviews:
-                    sig = self._make_review_signature(r)
-                    if sig not in seen_reviews:
-                        seen_reviews.add(sig)
-                        all_reviews.append(r)
-                        
-                # Update review count in product_info.json
-                self._update_review_count(target_path, len(all_reviews))
-
-            # --- Missing Files sync logic added ---
-            # Now sync other files like images and analysis if they are missing in target
-            important_files = [
-                "thumbnail.jpg",
-                "product_detail_merged.jpg",
-                "product_detail_merged_part1.jpg",
-                "product_detail_merged_part2.jpg",
-                "image_analysis.txt",
-                "review_analysis.txt"
-            ]
-            
-            for src_folder in source_folders:
-                src_path = os.path.join(self.data_dir, src_folder)
-                
-                # Check important files
-                for filename in important_files:
-                    target_file = os.path.join(target_path, filename)
-                    src_file = os.path.join(src_path, filename)
-                    
-                    if not os.path.exists(target_file) and os.path.exists(src_file):
-                        try:
-                            shutil.copy2(src_file, target_file)
-                            print(f"[Merge] Copied missing file: {filename} from {src_folder}")
-                        except Exception as e:
-                            print(f"[Merge] Failed to copy {filename}: {e}")
-                
-                # Check detail_images folder
-                src_details = os.path.join(src_path, "detail_images")
-                target_details = os.path.join(target_path, "detail_images")
-                if not os.path.exists(target_details) and os.path.exists(src_details):
-                    try:
-                        shutil.copytree(src_details, target_details)
-                        print(f"[Merge] Copied missing detail_images folder from {src_folder}")
-                    except Exception as e:
-                        print(f"[Merge] Failed to copy detail_images: {e}")
-
-                # Delete source folder
-                try:
-                    shutil.rmtree(src_path)
-                    print(f"[Merge] Deleted source: {src_folder}")
-                except Exception as e:
-                    print(f"[Merge] Failed to delete {src_folder}: {e}")
-            
-            merged_count += len(source_folders)
+            target = folder_list[0]
+            sources = folder_list[1:]
+            self._perform_merge(target, sources)
+            merged_count += len(sources)
             
         return {"merged_groups": total_groups, "deleted_folders": merged_count}
 
-    def _load_reviews(self, folder_path: str) -> List[Dict]:
-        # Try json first
-        json_path = os.path.join(folder_path, "reviews.json")
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                pass
+    def _perform_merge(self, target_folder: str, source_folders: List[str]):
+        """실제 병합 작업 수행 (리뷰 텍스트, 이미지, 분석 결과 등)"""
+        target_path = os.path.join(self.data_dir, target_folder)
         
-        # Try csv? (Parsing CSV to dict is harder without pandas, maybe skip for now if JSON is primary)
-        # The crawler saves both usually. We'll rely on JSON.
-        return []
+        # 1. 리뷰 텍스트 병합 (reviews.txt)
+        all_review_texts = self._load_reviews_txt(target_path)
+        seen_contents = set(all_review_texts)
+        
+        for src in source_folders:
+            src_path = os.path.join(self.data_dir, src)
+            src_texts = self._load_reviews_txt(src_path)
+            for txt in src_texts:
+                if txt not in seen_contents:
+                    seen_contents.add(txt)
+                    all_review_texts.append(txt)
+        
+        self._save_reviews_txt(target_path, all_review_texts)
+        
+        # 2. 관련 파일 복사 (이미지, 분석 결과 등)
+        important_files = [
+            "thumbnail.jpg", "product_detail_merged.jpg",
+            "product_detail_merged_part1.jpg", "product_detail_merged_part2.jpg",
+            "image_analysis.txt", "review_analysis.txt", "product_info.json"
+        ]
+        
+        for src in source_folders:
+            src_path = os.path.join(self.data_dir, src)
+            for filename in important_files:
+                target_file = os.path.join(target_path, filename)
+                src_file = os.path.join(src_path, filename)
+                if not os.path.exists(target_file) and os.path.exists(src_file):
+                    try: shutil.copy2(src_file, target_file)
+                    except: pass
+            
+            # 상세 이미지 폴더
+            src_details = os.path.join(src_path, "detail_images")
+            target_details = os.path.join(target_path, "detail_images")
+            if not os.path.exists(target_details) and os.path.exists(src_details):
+                try: shutil.copytree(src_details, target_details)
+                except: pass
+            
+            # 원본 폴더 삭제
+            try: shutil.rmtree(src_path)
+            except: pass
 
-    def _save_reviews(self, folder_path: str, reviews: List[Dict]):
-        json_path = os.path.join(folder_path, "reviews.json")
+        # 3. 최종 개수 업데이트
+        self._update_review_count(target_path, len(all_review_texts))
+
+    def _load_reviews_txt(self, folder_path: str) -> List[str]:
+        txt_path = os.path.join(folder_path, "reviews.txt")
+        if not os.path.exists(txt_path): return []
+        
+        reviews = []
         try:
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(reviews, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"[Merge] Failed to save reviews: {e}")
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # [리뷰 N]으로 시작하고 --- 로 끝나는 블록 분리
+                blocks = re.split(r'\[리뷰 \d+\]', content)
+                for b in blocks:
+                    clean = b.replace('-'*80, '').strip()
+                    if clean: reviews.append(clean)
+        except: pass
+        return reviews
+
+    def _save_reviews_txt(self, folder_path: str, reviews: List[str]):
+        txt_path = os.path.join(folder_path, "reviews.txt")
+        try:
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write(f"총 {len(reviews)}개의 리뷰\n")
+                f.write("=" * 80 + "\n\n")
+                for i, txt in enumerate(reviews):
+                    f.write(f"[리뷰 {i+1}]\n{txt}\n{'-'*80}\n")
+        except: pass
 
     def _update_review_count(self, folder_path: str, count: int):
         info_path = os.path.join(folder_path, "product_info.json")
@@ -202,23 +174,12 @@ class HistoryService:
             try:
                 with open(info_path, 'r', encoding='utf-8') as f:
                     info = json.load(f)
-                
-                info["리뷰_총개수"] = count # Update count
-                info["병합됨"] = True
+                info["수집된_리뷰_개수"] = count
                 info["병합시각"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
                 with open(info_path, 'w', encoding='utf-8') as f:
                     json.dump(info, f, ensure_ascii=False, indent=2)
-            except:
-                pass
+            except: pass
 
     def _make_review_signature(self, review: Dict) -> str:
-        # Create a unique string for the review
-        # Adjust fields based on actual review structure
-        # Common fields: date, author, option, content, rating
-        parts = [
-            str(review.get("date", "")),
-            str(review.get("author", "")),
-            str(review.get("content", "")[:50]) # First 50 chars of content
-        ]
+        parts = [str(review.get("text", ""))]
         return "|".join(parts)

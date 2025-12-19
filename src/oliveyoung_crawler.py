@@ -4,6 +4,7 @@
 """
 
 import os
+import shutil
 import sys
 
 # src 폴더를 Python path에 추가
@@ -23,16 +24,20 @@ import time
 class OliveyoungIntegratedCrawler:
     """올리브영 통합 크롤러"""
 
-    def __init__(self, headless: bool = True, log_callback=None):
+    def __init__(self, headless: bool = True, log_callback=None, confirmation_callback=None, merge_callback=None):
         """
         Args:
             headless: 브라우저 백그라운드 실행 여부
             log_callback: 로그 출력 콜백 함수 (optional)
+            confirmation_callback: 사용자 확인 응답 대기 함수 (optional)
+            merge_callback: 실제 폴더 병합 수행 함수 (optional)
         """
         self.base_crawler = OliveyoungCrawler(headless=headless)
         self.detail_crawler = None
         self.review_crawler = None
         self.log_callback = log_callback
+        self.confirmation_callback = confirmation_callback
+        self.merge_callback = merge_callback
 
     def log(self, message: str):
         """로그 출력"""
@@ -58,13 +63,7 @@ class OliveyoungIntegratedCrawler:
 
     def create_product_folder(self, product_name: str) -> str:
         """
-        상품별 폴더 생성
-
-        Args:
-            product_name: 상품명
-
-        Returns:
-            생성된 폴더 경로
+        상품별 폴더 생성 및 기존 폴더 병합 체크
         """
         # 파일명에 사용할 수 없는 문자 제거
         safe_name = "".join(
@@ -72,18 +71,38 @@ class OliveyoungIntegratedCrawler:
         ).strip()
         safe_name = safe_name.replace(" ", " ")  # 공백 유지
 
-        # 날짜만 추가 (YYMMDD 형식)
-        date_str = datetime.now().strftime("%y%m%d")
-        folder_name = f"{date_str}_{safe_name}"
-
         # 프로젝트 루트 기준 절대 경로 설정
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(project_root, "data")
+        os.makedirs(data_dir, exist_ok=True)
 
+        # 날짜 추가 (YYMMDD 형식)
+        date_str = datetime.now().strftime("%y%m%d")
+        folder_name = f"{date_str}_{safe_name}"
         folder_path = os.path.join(data_dir, folder_name)
-        os.makedirs(folder_path, exist_ok=True)
 
-        print(f"📁 폴더 생성: {folder_path}")
+        # 기존 상품 폴더 검사 (날짜 prefix 상관없이 상품명 확인)
+        existing_folders = []
+        if os.path.exists(data_dir):
+            for f in os.listdir(data_dir):
+                if f.endswith(f"_{safe_name}") and f != folder_name:
+                    existing_folders.append(f)
+
+        if existing_folders and self.confirmation_callback:
+            confirm_id = f"MERGE_{safe_name}"
+            self.log(f"NEED_MERGE_CONFIRMATION_REQ:{confirm_id}:{product_name}")
+            confirmed = self.confirmation_callback(confirm_id)
+            
+            if confirmed and self.merge_callback:
+                self.log(f"✅ 사용자가 병합을 선택했습니다. 기존 {len(existing_folders)}개 폴더를 병합합니다.")
+                # 실제 병합 수행 (HistoryService 로직 호출)
+                merged_path = self.merge_callback(product_name)
+                if merged_path and os.path.exists(merged_path):
+                    self.log(f"📂 기존 자료가 폴더({os.path.basename(merged_path)})로 병합되었습니다.")
+                    return merged_path
+
+        os.makedirs(folder_path, exist_ok=True)
+        print(f"📁 폴더 준비 완료: {folder_path}")
         return folder_path
 
     def search_and_get_first_product(self, keyword: str) -> Dict:
@@ -120,6 +139,7 @@ class OliveyoungIntegratedCrawler:
         reviews_only: bool = False,
         skip_navigation: bool = False,
         initial_info: Dict = None,
+        max_reviews: int = 300,
     ) -> Dict:
         """
         URL로 상품 상세 정보 크롤링
@@ -199,15 +219,13 @@ class OliveyoungIntegratedCrawler:
                         print(
                             f"  ⚠️ 썸네일 다운로드 실패 (Status: {response.status_code})"
                         )
+                else:
+                    # 이미 파일이 존재하더라도, JSON에 경로가 누락되었을 수 있으므로 설정
+                    product_info["썸네일_경로"] = thumb_path
             except Exception as e:
                 print(f"  ⚠️ 썸네일 다운로드 중 오류: {e}")
 
         product_info["수집시각"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # 리뷰 메타데이터 (별점, 리뷰수) 추출
-        review_meta = self.detail_crawler.extract_review_metadata()
-        if review_meta:
-            product_info.update(review_meta)
 
         # 추가 정보 추출 (사용자 요청: 상품정보 탭의 특정 행)
         specific_info = self.detail_crawler.extract_specific_info()
@@ -223,17 +241,20 @@ class OliveyoungIntegratedCrawler:
             if self.detail_crawler.click_review_tab():
                 print("✅ 리뷰 탭 활성화 완료")
 
-            # New Layout (Infinite Scroll) 시도
-            # API-based review collection (Hybrid)
+            # API 기반 리뷰 수집 (재시도 로직은 review_crawler에 내장)
+            # 실패 시 기존 스크롤 방식은 사용하지 않음 (사용자 요청)
+            review_count = 0
             try:
                 review_count = self.review_crawler.crawl_reviews_via_api(
-                    output_path=review_file, end_date=review_end_date
+                    output_path=review_file, 
+                    end_date=review_end_date,
+                    max_count=max_reviews
                 )
             except Exception as e:
-                print(f"⚠️ API 수집 실패, 기존 방식 시도: {e}")
-                review_count = self.review_crawler.crawl_reviews_infinite_scroll(
-                    output_path=review_file, end_date=review_end_date
-                )
+                print(f"❌ API 리뷰 수집 중 최종 오류 발생: {e}")
+                print(f"ℹ️  지금까지 수집된 리뷰는 파일에 저장되었을 수 있습니다.")
+                # review_crawler가 실패 전까지의 카운트를 반환하므로, 그 값을 유지합니다.
+                # product_info["수집된_리뷰_개수"]에 반영하기 위해 별도 처리는 불필요합니다.
 
             product_info["수집된_리뷰_개수"] = review_count
 
@@ -247,6 +268,7 @@ class OliveyoungIntegratedCrawler:
         collect_reviews: bool = False,
         review_end_date: str = None,
         reviews_only: bool = False,
+        max_reviews: int = 300,
     ) -> Dict:
         """
         키워드로 상품 검색 및 크롤링
@@ -286,6 +308,7 @@ class OliveyoungIntegratedCrawler:
             collect_reviews=collect_reviews,
             review_end_date=review_end_date,
             reviews_only=reviews_only,
+            max_reviews=max_reviews,
         )
 
         # 데이터 저장
@@ -309,6 +332,7 @@ class OliveyoungIntegratedCrawler:
         collect_reviews: bool = False,
         review_end_date: str = None,
         reviews_only: bool = False,
+        max_reviews: int = 300,
     ) -> Dict:
         """
         URL로 상품 크롤링
@@ -369,6 +393,7 @@ class OliveyoungIntegratedCrawler:
             reviews_only=reviews_only,
             skip_navigation=skip_nav,
             initial_info=initial_info,
+            max_reviews=max_reviews,
         )
 
         # 데이터 저장 (최종 업데이트된 정보로 덮어쓰기)

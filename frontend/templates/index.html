@@ -76,11 +76,11 @@
                 
                 <div class="setting-item review-date-section" id="common-review-date-container">
                     <label class="review-date-label">
-                        <i class="fa-solid fa-calendar-day"></i>
-                        <span>이 날짜부터 리뷰 수집</span>
+                        <i class="fa-solid fa-list-ol"></i>
+                        <span>최대 수집 리뷰 개수</span>
                     </label>
-                    <input type="date" id="common-review-end-date" class="review-date-input">
-                    <small class="review-date-hint">선택하지 않으면 모든 리뷰를 수집합니다</small>
+                    <input type="number" id="common-max-reviews" class="review-date-input" value="300" min="10" step="10">
+                    <small class="review-date-hint">네트워크 상태에 따라 수집 개수를 조정할 수 있습니다</small>
                 </div>
             </div>
 

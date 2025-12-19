@@ -20,7 +20,7 @@ if not exist venv (
 call venv\Scripts\activate
 
 echo [INFO] Starting server...
-echo [INFO] Open http://localhost:8000 in your browser
+echo [INFO] Open http://127.0.0.1:8000 in your browser
 python run_server.py
 
 pause

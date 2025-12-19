@@ -9,6 +9,7 @@ class CrawlKeywordRequest(BaseModel):
     collect_reviews: bool = False
     reviews_only: bool = False
     review_end_date: Optional[str] = None # YYYY.MM.DD
+    max_reviews: int = 300
 
 class CrawlUrlRequest(BaseModel):
     url: str
@@ -18,6 +19,7 @@ class CrawlUrlRequest(BaseModel):
     collect_reviews: bool = False
     reviews_only: bool = False
     review_end_date: Optional[str] = None
+    max_reviews: int = 300
 
 class CrawlParallelRequest(BaseModel):
     urls: List[str]
@@ -27,6 +29,7 @@ class CrawlParallelRequest(BaseModel):
     collect_reviews: bool = False
     reviews_only: bool = False
     review_end_date: Optional[str] = None
+    max_reviews: int = 300
 
 class CrawlerStatus(BaseModel):
     is_running: bool

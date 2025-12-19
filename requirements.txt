@@ -2,10 +2,6 @@ selenium==4.15.2
 webdriver-manager==4.0.1
 pandas
 openai>=2.0.0
-selenium==4.15.2
-webdriver-manager==4.0.1
-pandas
-openai>=2.0.0
 Pillow==11.0.0
 requests==2.31.0
 fastapi==0.104.1

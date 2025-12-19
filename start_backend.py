@@ -37,8 +37,8 @@ def cleanup_chrome_profiles():
 if __name__ == "__main__":
     cleanup_chrome_profiles()
     print("🚀 Starting Olive Young Crawler Web Server...")
-    print("📱 Frontend: http://localhost:8000")
-    print("🔧 Backend API: http://localhost:8000/docs")
+    print("📱 Frontend: http://127.0.0.1:8000")
+    print("🔧 Backend API: http://127.0.0.1:8000/docs")
     
     # backend.main에서 app 객체 직접 import
     try:

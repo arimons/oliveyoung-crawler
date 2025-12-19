@@ -53,6 +53,8 @@ let isPolling = false;
 let pollInterval = null;
 let currentAnalysisResult = ''; // Store current analysis result
 let currentViewMode = 'markdown'; // 'text' or 'markdown'
+let hasShownIncrementalAlert = false;
+let processedConfirms = new Set();
 
 // Helper Functions
 function compressOliveyoungUrl(url) {
@@ -162,14 +164,10 @@ async function startParallelCrawl() {
     const saveFormat = document.getElementById('common-save-format').value;
     const splitMode = "conservative"; // Always conservative (최대한 합치기)
     const collectReviews = document.getElementById('common-collect-reviews').checked;
-    let reviewEndDate = null;
-
-    if (collectReviews) {
-        const dateInput = document.getElementById('common-review-end-date').value;
-        if (dateInput) {
-            reviewEndDate = dateInput.replace(/-/g, '.');
-        }
-    }
+    const maxReviews = document.getElementById('common-max-reviews')?.value || 300;
+    let reviewEndDate = null; // Backend still expects this but it will be empty
+    hasShownIncrementalAlert = false;
+    processedConfirms = new Set();
 
     if (urls.length === 0) {
         alert('최소 1개의 URL을 입력해주세요');
@@ -187,7 +185,8 @@ async function startParallelCrawl() {
                 split_mode: splitMode,
                 collect_reviews: collectReviews,
                 reviews_only: document.getElementById('common-reviews-only').checked,
-                review_end_date: reviewEndDate
+                review_end_date: reviewEndDate,
+                max_reviews: parseInt(maxReviews)
             })
         });
 
@@ -254,14 +253,10 @@ async function startUrlCrawl() {
     const splitMode = "conservative"; // Always conservative (최대한 합치기)
     const collectReviews = document.getElementById('common-collect-reviews').checked;
     // reviewsOnly removed
+    const maxReviews = document.getElementById('common-max-reviews')?.value || 300;
     let reviewEndDate = null;
-
-    if (collectReviews) {
-        const dateInput = document.getElementById('common-review-end-date').value;
-        if (dateInput) {
-            reviewEndDate = dateInput.replace(/-/g, '.');
-        }
-    }
+    hasShownIncrementalAlert = false;
+    processedConfirms = new Set();
 
     if (!inputUrl) {
         alert('URL을 입력해주세요');
@@ -289,7 +284,8 @@ async function startUrlCrawl() {
                 split_mode: splitMode,
                 collect_reviews: collectReviews,
                 reviews_only: document.getElementById('common-reviews-only').checked,
-                review_end_date: reviewEndDate
+                review_end_date: reviewEndDate,
+                max_reviews: parseInt(maxReviews)
             })
         });
 
@@ -356,7 +352,48 @@ function updateStatusUI(status) {
     currentAction.textContent = status.current_action;
 
     // Logs
-    logWindow.innerHTML = status.logs.map(log => `<div>${log}</div>`).join('');
+    status.logs.forEach(log => {
+        // 1. 리뷰 이어쓰기 확인
+        if (!hasShownIncrementalAlert && log.includes('CONTINUE_CRAWL_PROMPT:')) {
+            hasShownIncrementalAlert = true;
+            const msg = log.split('CONTINUE_CRAWL_PROMPT:')[1].trim();
+            if (!confirm(`${msg}\n\n이어서 수집하시겠습니까?`)) {
+                fetch(`${API_BASE}/crawl/stop`, { method: 'POST' }).then(() => {
+                    stopPolling(); resetUI();
+                    showNotification('사용자 요청으로 추가 수집을 중지했습니다.', 'info');
+                });
+            }
+        }
+
+        // 2. 폴더 병합 확인
+        if (log.includes('NEED_MERGE_CONFIRMATION_REQ:')) {
+            const parts = log.split('NEED_MERGE_CONFIRMATION_REQ:')[1].split(':');
+            const confirmId = parts[0];
+            const productName = parts[1];
+
+            if (!processedConfirms.has(confirmId)) {
+                processedConfirms.add(confirmId);
+                const res = confirm(`'${productName}' 상품의 기존 크롤링 기록이 존재합니다.\n기존 폴더로 병합하여 수집할까요?`);
+                
+                // 결과 전송
+                fetch(`${API_BASE}/crawl/confirm`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm_id: confirmId, response: res })
+                });
+            }
+        }
+    });
+
+    logWindow.innerHTML = status.logs.map(log => {
+        if (log.includes('CONTINUE_CRAWL_PROMPT:')) {
+            return `<div style="color:var(--accent); font-weight:bold;">[안내] ${log.split('CONTINUE_CRAWL_PROMPT:')[1].trim()}</div>`;
+        }
+        if (log.includes('NEED_MERGE_CONFIRMATION_REQ:')) {
+            return `<div style="color:var(--accent); font-weight:bold;">[대기] 폴더 병합 확인 중...</div>`;
+        }
+        return `<div>${log}</div>`;
+    }).join('');
     logWindow.scrollTop = logWindow.scrollHeight;
 }
 
@@ -1197,6 +1234,49 @@ function showNotification(message, type = 'info') {
             }
         }, 300);
     }, 4000);
+}
+
+async function stopCrawl() {
+    if (!confirm('현재 진행 중인 모든 크롤링 작업을 중지하시겠습니까?')) {
+        return;
+    }
+
+    console.log('Sending stop signal to backend...');
+
+    try {
+        const res = await fetch(`${API_BASE}/crawl/stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({ detail: '작업 중지 요청에 실패했습니다.' }));
+            throw new Error(errData.detail);
+        }
+
+        const data = await res.json();
+        showNotification(data.message, 'info');
+        
+        stopPolling();
+        
+        setTimeout(async () => {
+            try {
+                const statusRes = await fetch(`${API_BASE}/status`);
+                const status = await statusRes.json();
+                updateStatusUI(status);
+                if (!status.is_running) {
+                    resetUI();
+                }
+            } catch (e) {
+                resetUI(); // Reset UI even if status check fails
+            }
+        }, 1500);
+
+
+    } catch (e) {
+        showNotification(`오류: ${e.message}`, 'error');
+        resetUI();
+    }
 }
 
 // Refresh product list when switching to AI tab and load API keys
